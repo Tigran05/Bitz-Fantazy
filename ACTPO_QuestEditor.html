@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ACTPO Quest ARCHITECT</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #8b5cf6;
+            --primary-glow: rgba(139, 92, 246, 0.4);
+            --bg: #05070a;
+            --glass: rgba(255, 255, 255, 0.03);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --text-main: #f1f5f9;
+            --text-dim: #64748b;
+            --accent-green: #22c55e;
+            --accent-red: #ef4444;
+            --accent-yellow: #f59e0b;
+            --accent-blue: #3b82f6;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg);
+            background-image:
+                radial-gradient(circle at 10% 10%, rgba(139, 92, 246, 0.15) 0%, transparent 40%),
+                radial-gradient(circle at 90% 90%, rgba(59, 130, 246, 0.15) 0%, transparent 40%);
+            color: var(--text-main);
+            margin: 0;
+            padding: 30px;
+            min-height: 100vh;
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: 280px 1fr 380px;
+            gap: 25px;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        header {
+            grid-column: span 3;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            font-size: 2.8rem;
+            font-weight: 800;
+            margin: 0;
+            background: linear-gradient(135deg, #a78bfa, #60a5fa);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -1.5px;
+        }
+
+        /* Sidebar & Navigation */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .nav-card {
+            background: var(--glass);
+            border: 1px solid var(--card-border);
+            border-radius: 20px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+        }
+
+        .chapter-box {
+            padding: 15px;
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid transparent;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 8px;
+        }
+
+        .chapter-box:hover {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: var(--card-border);
+        }
+
+        .chapter-box.active {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(59, 130, 246, 0.2));
+            border-color: var(--primary);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Main Workspace */
+        .workspace {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .section-card {
+            background: var(--glass);
+            border: 1px solid var(--card-border);
+            border-radius: 24px;
+            padding: 30px;
+            backdrop-filter: blur(20px);
+        }
+
+        .scenario-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .scenario-btn {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: left;
+        }
+
+        .scenario-btn:hover {
+            background: rgba(139, 92, 246, 0.1);
+            border-color: var(--primary);
+            transform: translateY(-2px);
+        }
+
+        .scenario-icon {
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+            display: block;
+        }
+
+        .scenario-title {
+            font-weight: 700;
+            display: block;
+            color: var(--text-main);
+        }
+
+        .scenario-desc {
+            font-size: 0.85rem;
+            color: var(--text-dim);
+        }
+
+        /* Step Editor */
+        .step-item {
+            display: grid;
+            grid-template-columns: 60px 1fr 150px 50px;
+            gap: 15px;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 15px;
+            border-radius: 18px;
+            margin-bottom: 12px;
+            border: 1px solid transparent;
+        }
+
+        .step-item:hover {
+            border-color: var(--card-border);
+        }
+
+        input,
+        select {
+            background: #000;
+            border: 1px solid var(--card-border);
+            color: white;
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-family: inherit;
+        }
+
+        input:focus {
+            border-color: var(--primary);
+            outline: none;
+        }
+
+        .badge {
+            font-size: 0.75rem;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .badge-logic {
+            background: rgba(59, 130, 246, 0.15);
+            color: #60a5fa;
+            border: 1px solid #3b82f644;
+        }
+
+        /* Right Panel */
+        .inspector {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .preview-box {
+            background: #000;
+            border: 1.5px solid #fff;
+            border-radius: 8px;
+            padding: 20px;
+            min-height: 120px;
+        }
+
+        .snippet {
+            background: #0d1117;
+            border-radius: 14px;
+            padding: 15px;
+            font-family: monospace;
+            font-size: 0.8rem;
+            color: var(--accent-green);
+            border: 1px solid var(--card-border);
+            position: relative;
+        }
+
+        .btn {
+            border: none;
+            border-radius: 14px;
+            cursor: pointer;
+            font-weight: 700;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-action {
+            background: var(--primary);
+            color: white;
+            padding: 15px;
+            width: 100%;
+            box-shadow: 0 10px 30px var(--primary-glow);
+        }
+
+        .btn-action:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 40px var(--primary-glow);
+        }
+
+        /* Variable Autopilot */
+        .auto-var {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.85rem;
+            color: var(--accent-yellow);
+            margin-top: 10px;
+            background: rgba(245, 158, 11, 0.1);
+            padding: 8px 15px;
+            border-radius: 10px;
+        }
+
+        @media (max-width: 1200px) {
+            .layout {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="layout">
+        <header>
+            <h1>Quest ARCHITECT</h1>
+            <p style="color: var(--text-dim); margin-top: 8px;">Визуальное проектирование сложных сюжетных цепочек</p>
+        </header>
+
+        <!-- Navigation -->
+        <aside class="sidebar">
+            <div class="nav-card">
+                <h3 style="margin-top:0; font-size: 1rem;">🌆 ГОРОДА (ГЛАВЫ)</h3>
+                <div id="chapterNav"></div>
+                <button class="btn"
+                    style="width:100%; padding:10px; background:rgba(255,255,255,0.05); color:var(--text-dim);"
+                    onclick="resetAll()">Сбросить всё</button>
+            </div>
+        </aside>
+
+        <!-- Main Editor -->
+        <main class="workspace">
+            <!-- Scenarios -->
+            <div class="section-card">
+                <h3 style="margin-top:0;">🎭 ВЫБЕРИТЕ СЦЕНАРИЙ ДЛЯ ГЛАВЫ</h3>
+                <div class="scenario-grid">
+                    <div class="scenario-btn" onclick="applyTemplate('epic')">
+                        <span class="scenario-icon">🏛️</span>
+                        <span class="scenario-title">Эпическая Цепочка</span>
+                        <span class="scenario-desc">Разговор -> Охота -> Поиск Предмета -> Финал</span>
+                    </div>
+                    <div class="scenario-btn" onclick="applyTemplate('detective')">
+                        <span class="scenario-icon">🕵️</span>
+                        <span class="scenario-title">Детективное Расследование</span>
+                        <span class="scenario-desc">Серия диалогов с разными NPC</span>
+                    </div>
+                    <div class="scenario-btn" onclick="applyTemplate('combat')">
+                        <span class="scenario-icon">⚔️</span>
+                        <span class="scenario-title">Зачистка Территории</span>
+                        <span class="scenario-desc">3 битвы подряд с боссом в конце</span>
+                    </div>
+                    <div class="scenario-btn" onclick="applyTemplate('empty')">
+                        <span class="scenario-icon">📝</span>
+                        <span class="scenario-title">Чистый Лист</span>
+                        <span class="scenario-desc">Создать структуру вручную</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step List -->
+            <div class="section-card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:25px;">
+                    <h3 style="margin:0;">🏗️ СТРУКТУРА СЮЖЕТА</h3>
+                    <div class="auto-var">
+                        <span>🛸 Variable Autopilot: <b>ON</b></span>
+                    </div>
+                </div>
+
+                <div id="stepEditor"></div>
+                <button class="btn" style="background:rgba(255,255,255,0.05); padding:15px; width:100%;"
+                    onclick="addStep()">+ Добавить новый этап в цепочку</button>
+            </div>
+
+        </main>
+
+        <!-- Preview & Controls -->
+        <aside class="inspector">
+            <div class="section-card" style="padding:20px;">
+                <h3 style="margin-top:0; color:var(--accent-yellow); font-size: 0.9rem; text-transform:uppercase;">🗺️
+                    КВЕСТ-ЛОГ (HUD)</h3>
+                <div class="preview-box">
+                    <div id="hudPreview"></div>
+                </div>
+
+                <h3 style="margin-top:30px; color:var(--accent-blue); font-size: 0.9rem; text-transform:uppercase;">🤖
+                    ИНСТРУКЦИЯ ДЛЯ NPC</h3>
+                <div id="npcInstructions" style="font-size:0.85rem; line-height:1.5;"></div>
+
+                <h3 style="margin-top:30px; color:var(--accent-yellow); font-size: 0.9rem; text-transform:uppercase;">📋
+                    КОД ДЛЯ СОБЫТИЯ</h3>
+                <div style="display:flex; gap:5px; margin-bottom:10px;">
+                    <button class="btn" id="btnStartMode"
+                        style="flex:1; font-size:0.7rem; padding:8px; background:var(--primary); border:1px solid var(--primary);"
+                        onclick="setSnippetMode('start')">НОВЫЙ (Start)</button>
+                    <button class="btn" id="btnAutoMode"
+                        style="flex:1; font-size:0.7rem; padding:8px; background:rgba(255,255,255,0.05); border:1px solid var(--card-border); color:var(--accent-yellow);"
+                        onclick="setSnippetMode('auto')">АВТО (Auto)</button>
+                    <button class="btn" id="btnFinishMode"
+                        style="flex:1; font-size:0.7rem; padding:8px; background:rgba(255,255,255,0.05); border:1px solid var(--card-border);"
+                        onclick="setSnippetMode('finish')">У NPC (Next)</button>
+                </div>
+                <div class="snippet" style="background:#000; border:1px solid var(--accent-yellow);">
+                    <div style="position:absolute; top:5px; right:10px; font-size:0.6rem; color:var(--accent-yellow); cursor:pointer;"
+                        onclick="copyCurrentSnippet()">COPY</div>
+                    <code id="currentEventSnippet"
+                        style="color:var(--accent-yellow); font-size: 0.8rem;">// Выберите этап слева...</code>
+                </div>
+                <p style="font-size:0.75rem; color:var(--accent-yellow); margin-top:10px; font-weight:700;"
+                    id="snippetHint">Чтобы квест ПОЯВИЛСЯ на экране:</p>
+                <p style="font-size:0.7rem; color:var(--text-dim); margin-top:5px;">Вставьте это в команду <b>Script</b>
+                    (вкладка 3) в RPG Maker.</p>
+            </div>
+
+            <div class="section-card" style="padding:20px; background: #000; position: relative; overflow: hidden;">
+                <div id="syncWave"
+                    style="position:absolute; top:0; left:0; width:100%; height:100%; background: linear-gradient(90deg, transparent, rgba(34, 197, 94, 0.05), transparent); transform: translateX(-100%); transition: 0.5s;">
+                </div>
+                <h3 style="margin-top:0; color:var(--accent-green); font-size: 0.9rem;">📀 ГЕНЕРАЦИЯ И
+                    АВТО-СИНХРОНИЗАЦИЯ</h3>
+
+                <button class="btn" id="syncBtn"
+                    style="background: rgba(34, 197, 94, 0.1); color: var(--accent-green); border: 1px solid var(--accent-green); width: 100%; padding: 10px; margin-bottom: 15px;"
+                    onclick="enableMagicSync()">
+                    ✨ ВКЛЮЧИТЬ МАГИЧЕСКУЮ СИНХРОНИЗАЦИЮ
+                </button>
+
+                <button class="btn"
+                    style="background: rgba(245, 158, 11, 0.1); color: var(--accent-yellow); border: 1px solid var(--accent-yellow); width: 100%; padding: 10px; margin-bottom: 15px;"
+                    onclick="toggleTutorial()">
+                    📖 ПОЛНАЯ ИНСТРУКЦИЯ (ТУТОРИАЛ)
+                </button>
+
+                <div id="codeOutput"
+                    style="font-family:monospace; font-size:0.7rem; color:var(--accent-green); white-space:pre-wrap; max-height:300px; overflow-y:auto; margin-bottom:15px; opacity: 0.6;">
+                </div>
+                <button class="btn btn-action" id="genBtn" onclick="generateAndSave()">СОХРАНИТЬ В ИГРУ</button>
+                <p id="syncStatus"
+                    style="font-size: 0.7rem; color: var(--text-dim); margin-top: 10px; text-align: center;">Статус:
+                    Ручной режим (нужно копировать)</p>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Tutorial Modal -->
+    <div id="tutorialModal"
+        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:1000; padding:50px; overflow-y:auto;">
+        <div class="section-card"
+            style="max-width:900px; margin:0 auto; background:var(--bg); border:2px solid var(--primary);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:30px;">
+                <h2 style="margin:0; color:var(--primary);">🎓 МАСТЕР-КЛАСС: КАК СДЕЛАТЬ КВЕСТ</h2>
+                <button class="btn" style="background:rgba(239, 68, 68, 0.2); color:var(--accent-red); padding:10px;"
+                    onclick="toggleTutorial()">✕ Закрыть</button>
+            </div>
+
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:30px; text-align:left;">
+                <div>
+                    <h4 style="color:var(--accent-yellow);">1. ПОДГОТОВКА В РЕДАКТОРЕ</h4>
+                    <p style="font-size:0.9rem;">Нажмите на <b>"Глава 1"</b> и кнопку <b>"Эпическая Цепочка"</b>.
+                        Программа сама создаст квест: "Бармен -> Крысы -> Айтишник".</p>
+                    <div class="snippet" style="font-size:0.8rem; border-left:4px solid var(--accent-yellow);">
+                        Нажмите <b>"СОХРАНИТЬ В ИГРУ"</b>. Если магия включена, файл <code>ACTPO_QuestConfig.js</code>
+                        обновится сам.
+                    </div>
+                </div>
+
+                <div>
+                    <h4 style="color:var(--accent-green);">2. НАСТРОЙКА БАРМЕНА</h4>
+                    <p style="font-size:0.9rem;">В RPG Maker откройте событие Бармена. Нужно 2 вкладки (страницы):</p>
+                    <ul style="font-size:0.85rem; color:var(--text-dim);">
+                        <li><b>Страница 1 (Без условий)</b>: <br>Текст: "Привет!" <br>Команда: <b>Script...</b> (Page
+                            3). <br>Вставьте: <code>$gameVariables.setValue(10, 1);</code></li>
+                        <li><b>Страница 2 (Условие: Var 10 >= 1)</b>: <br>Текст: "Крыс убери!"</li>
+                    </ul>
+                </div>
+
+                <div
+                    style="grid-column: span 2; background:rgba(34, 197, 94, 0.05); padding:20px; border-radius:15px; border: 1px dashed var(--accent-green);">
+                    <h4 style="margin-top:0;">🛡️ КАК СДЕЛАТЬ УБИЙСТВА (RAT KILL)</h4>
+                    <p>Плагин <code>ACTPO_KillTracker.js</code> считает всё сам. Вам <b>не нужно</b> писать код в
+                        крысах.</p>
+                    <ol style="font-size:0.9rem;">
+                        <li>В Базе Данных (Монстры) гляньте ID крысы (по умолчанию 10).</li>
+                        <li>В редакторе Architect (внизу) привяжите: <b>Враг 10 -> Переменная 11</b>.</li>
+                        <li>Поставьте в редакторе в квесте текст: <code>Убить крыс (\\v[11]/3)</code>.</li>
+                        <li>В игре просто побейте 3 крысы. Переменная 11 станет равна 3.</li>
+                    </ol>
+                </div>
+
+                <div style="grid-column: span 2;">
+                    <h4 style="color:var(--accent-blue);">3. ЗАВЕРШЕНИЕ ЭТАПА</h4>
+                    <p style="font-size:0.9rem;">Чтобы квест "переключился", вы должны изменить переменную главы в
+                        <b>RPG Maker</b>. В HUD теперь есть <b>ПОДСКАЗКА</b>:
+                    </p>
+                    <div class="snippet" style="background:#222; border:1px solid var(--primary); padding:10px;">
+                        <span style="color:var(--text-dim); font-size:0.7rem;">Справа в HUD вы увидите:</span> [10:
+                        v1]<br>
+                        Это значит: <b>Переменная 10</b> сейчас равна <b>1</b>.
+                    </div>
+                </div>
+
+                <div
+                    style="grid-column: span 2; background:rgba(239, 68, 68, 0.05); padding:20px; border-radius:15px; border: 1px dashed var(--accent-red);">
+                    <h4 style="margin-top:0; color:var(--accent-red);">⚠️ ПОЧЕМУ ШАГ НЕ ПЕРЕКЛЮЧАЕТСЯ?</h4>
+                    <p style="font-size:0.85rem;">Самая частая ошибка: Вы вставили код <code>setValue(10, 2)</code>, но
+                        он стоит внутри "Условного ветвления", которое не срабатывает. <br>
+                        <b>КАК ПРОВЕРИТЬ:</b> Посмотрите на цифру в HUD. Если там всё еще <code>v1</code>, значит ваш
+                        скрипт у NPC просто <b>не запустился</b>.
+                    </p>
+                </div>
+            </div>
+
+            <button class="btn btn-action" style="margin-top:40px;" onclick="toggleTutorial()">ПОНЯТНО, ДАВАЙТЕ
+                ДЕЛАТЬ!</button>
+        </div>
+    </div>
+
+    <script>
+        // Magic Sync State
+        let fileHandle = null;
+
+        async function enableMagicSync() {
+            try {
+                // Pick the ACTPO_QuestConfig.js file
+                [fileHandle] = await window.showOpenFilePicker({
+                    types: [{
+                        description: 'ACTPO Quest Config',
+                        accept: { 'application/javascript': ['.js'] },
+                    }],
+                    multiple: false
+                });
+
+                document.getElementById('syncBtn').style.display = 'none';
+                document.getElementById('syncStatus').innerHTML = "✅ <b>МАГИЯ ВКЛЮЧЕНА!</b> Программа теперь сама пишет в файл.";
+                document.getElementById('syncStatus').style.color = "var(--accent-green)";
+                alert("Синхронизация включена! Теперь при нажатии 'СОХРАНИТЬ' файл в вашей игре обновится сам.");
+            } catch (err) {
+                console.error(err);
+                alert("Для магии нужен современный браузер (Chrome/Edge) и ваше разрешение на выбор файла.");
+            }
+        }
+
+        async function writeToFile(content) {
+            if (!fileHandle) return false;
+            try {
+                const writable = await fileHandle.createWritable();
+                await writable.write(content);
+                await writable.close();
+
+                // Animation
+                const wave = document.getElementById('syncWave');
+                wave.style.transform = "translateX(100%)";
+                setTimeout(() => { wave.style.transition = "none"; wave.style.transform = "translateX(-100%)"; setTimeout(() => wave.style.transition = "0.5s", 10); }, 500);
+
+                return true;
+            } catch (err) {
+                console.error(err);
+                return false;
+            }
+        }
+
+        function toggleTutorial() {
+            const modal = document.getElementById('tutorialModal');
+            modal.style.display = modal.style.display === 'none' ? 'block' : 'none';
+        }
+
+        // Narrative State
+        let state = {
+            activeChapter: 1,
+            selectedStep: 0,
+            snippetMode: 'start', // 'start' or 'finish'
+            chapters: Array.from({ length: 7 }, (_, i) => ({
+                id: i + 1,
+                mainVar: (i + 1) * 10,
+                logicVars: [(i + 1) * 10 + 1],
+                steps: []
+            })),
+            killMap: {}
+        };
+
+        // Load Data
+        const saved = localStorage.getItem('actpo_architect_v1');
+        if (saved) state = JSON.parse(saved);
+
+        function setSnippetMode(mode) {
+            state.snippetMode = mode;
+            document.getElementById('btnStartMode').style.background = mode === 'start' ? 'var(--primary)' : 'rgba(255,255,255,0.05)';
+            document.getElementById('btnAutoMode').style.background = mode === 'auto' ? 'var(--accent-yellow)' : 'rgba(255,255,255,0.05)';
+            document.getElementById('btnAutoMode').style.color = mode === 'auto' ? '#000' : 'var(--accent-yellow)';
+            document.getElementById('btnFinishMode').style.background = mode === 'finish' ? 'var(--primary)' : 'rgba(255,255,255,0.05)';
+
+            let hint = 'Чтобы квест ВПЕРВЫЕ появился:';
+            if (mode === 'auto') hint = 'Авто-переход (например, после 3 убийств):';
+            if (mode === 'finish') hint = 'В разговоре с NPC (квест уже на экране):';
+
+            document.getElementById('snippetHint').innerText = hint;
+            updatePreview();
+        }
+
+        function init() {
+            renderNav();
+            renderEditor();
+            updatePreview();
+        }
+
+        function renderNav() {
+            const nav = document.getElementById('chapterNav');
+            nav.innerHTML = state.chapters.map(ch => `
+            <div class="chapter-box ${ch.id === state.activeChapter ? 'active' : ''}" onclick="switchChapter(${ch.id})">
+                <div style="font-weight:800; font-size:1.1rem;">ГЛАВА ${ch.id}</div>
+                <div style="font-size:0.75rem; color:var(--text-dim);">Узел: Var ${ch.mainVar}</div>
+            </div>
+        `).join('');
+        }
+
+        function switchChapter(id) {
+            state.activeChapter = id;
+            renderNav();
+            renderEditor();
+            updatePreview();
+        }
+
+        function renderEditor() {
+            const ch = state.chapters.find(c => c.id === state.activeChapter);
+            const container = document.getElementById('stepEditor');
+
+            container.innerHTML = ch.steps.map((s, i) => {
+                const isActive = state.selectedStep === i;
+                let subFields = '';
+
+                if (s.type === 'kill' || s.type === 'item') {
+                    const label = s.type === 'kill' ? 'ID Врага' : 'ID Предмета';
+                    const target = s.enemyId || s.targetId || 1;
+                    const count = s.count || 1;
+                    const vId = s.targetVar || (ch.mainVar + (i + 1));
+
+                    subFields = `
+                        <div style="grid-column: span 3; display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; padding:10px; background:rgba(255,255,255,0.03); border-radius:10px; margin-top:10px;">
+                            <div style="font-size:0.7rem; color:var(--text-dim);">${label}: <input type="number" value="${target}" style="width:70px;" oninput="updateStepDetail(${i}, '${s.type === 'kill' ? 'enemyId' : 'targetId'}', this.value)" onclick="event.stopPropagation()"></div>
+                            <div style="font-size:0.7rem; color:var(--text-dim);">Кол-во: <input type="number" value="${count}" style="width:70px;" oninput="updateStepDetail(${i}, 'count', this.value)" onclick="event.stopPropagation()"></div>
+                            <div style="font-size:0.7rem; color:var(--text-dim);">Var ID: <input type="number" value="${vId}" style="width:70px;" oninput="updateStepDetail(${i}, 'targetVar', this.value)" onclick="event.stopPropagation()"></div>
+                        </div>
+                    `;
+                }
+
+                return `
+                <div class="step-item ${isActive ? 'active-step' : ''}" onclick="selectStep(${i})" style="cursor:pointer; border-left: 4px solid ${isActive ? 'var(--primary)' : 'transparent'}; display:grid; grid-template-columns: 40px 1fr 120px 40px; align-items:center;">
+                    <div style="text-align:center; font-weight:800; font-size:1.2rem; color:var(--primary);">${i + 1}</div>
+                    <input type="text" value="${s.text}" placeholder="Что видит игрок..." oninput="updateStep(${i}, 'text', this.value)" onclick="event.stopPropagation()">
+                    <select onchange="updateStep(${i}, 'type', this.value)" onclick="event.stopPropagation()">
+                        <option value="talk" ${s.type === 'talk' ? 'selected' : ''}>💬 Диалог</option>
+                        <option value="kill" ${s.type === 'kill' ? 'selected' : ''}>⚔️ Убийство</option>
+                        <option value="item" ${s.type === 'item' ? 'selected' : ''}>📦 Предмет</option>
+                    </select>
+                    <button onclick="removeStep(${i}); event.stopPropagation();" style="background:none; border:none; color:var(--accent-red); cursor:pointer;">✕</button>
+                    ${subFields}
+                </div>
+                `;
+            }).join('');
+        }
+
+        function selectStep(i) {
+            state.selectedStep = i;
+            renderEditor();
+            updatePreview();
+        }
+
+        const style = document.createElement('style');
+        style.innerHTML = '.active-step { background: rgba(139, 92, 246, 0.05) !important; border-color: rgba(139, 92, 246, 0.3) !important; }';
+        document.head.appendChild(style);
+
+        function applyTemplate(type) {
+            const ch = state.chapters.find(c => c.id === state.activeChapter);
+            const lv = ch.logicVars[0];
+
+            if (type === 'epic') {
+                const mv = ch.mainVar;
+                ch.steps = [
+                    { text: "Поговорить с Барменом Майком", type: 'talk' },
+                    { text: "Избавить подвал от крыс (\\v[" + (mv + 1) + "]/3)", type: 'kill', targetVar: mv + 1, count: 3 },
+                    { text: "Вернуться к Майку за 1-й цифрой кода", type: 'talk' },
+                    { text: "Поговорить с Инженером в серверной", type: 'talk' },
+                    { text: "Найти Жидкий Азот в морозилке (\\v[" + (mv + 2) + "]/1)", type: 'item', targetVar: mv + 2, count: 1 },
+                    { text: "Отдать Азот Инженеру за 2-ю цифру", type: 'talk' },
+                    { text: "Поговорить с Девочкой-крупье в казино", type: 'talk' },
+                    { text: "Победить Шулера (\\v[" + (mv + 3) + "]/1)", type: 'kill', targetVar: mv + 3, count: 1 },
+                    { text: "Вернуться к слот менеджеру", type: 'talk' },
+                    { text: "Найти потайной ход в доме Брунно", type: 'item', targetVar: mv + 4, count: 1 },
+                    { text: "Вскрыть сейф и забрать бухгалтерию", type: 'item', targetVar: mv + 5, count: 1 },
+                    { text: "ОДОЛЕТЬ БРУННО В ФИНАЛЬНОЙ БИТВЕ", type: 'talk' }
+                ];
+                state.killMap[1] = mv + 1;  // Rat ID 1 -> Var 11
+                state.killMap[20] = mv + 3; // Cheater ID 20 -> Var 13
+            } else if (type === 'detective') {
+                ch.steps = [
+                    { text: "Опросить свидетеля на площади", type: 'talk' },
+                    { text: "Найти улику в переулке", type: 'item' },
+                    { text: "Предъявить улику подозреваемому", type: 'talk' }
+                ];
+            } else if (type === 'combat') {
+                ch.steps = [
+                    { text: "Зачистка входа (\\v[" + lv + "]/5)", type: 'kill' },
+                    { text: "Уничтожить генератор", type: 'item' },
+                    { text: "ОДОЛЕТЬ МУТАНТА", type: 'kill' }
+                ];
+            } else {
+                ch.steps = [];
+            }
+
+            saveData();
+            renderEditor();
+            updatePreview();
+        }
+
+        function updateStep(i, key, val) {
+            const ch = state.chapters.find(c => c.id === state.activeChapter);
+            ch.steps[i][key] = val;
+            saveData();
+            updatePreview();
+            if (key === 'type') renderEditor(); // Re-render to show/hide sub-fields
+        }
+
+        function addStep() {
+            const ch = state.chapters.find(c => c.id === state.activeChapter);
+            ch.steps.push({ text: "Новая задача", type: 'talk' });
+            renderEditor();
+            saveData();
+            updatePreview();
+        }
+
+        function removeStep(i) {
+            const ch = state.chapters.find(c => c.id === state.activeChapter);
+            ch.steps.splice(i, 1);
+            renderEditor();
+            saveData();
+            updatePreview();
+        }
+
+        function updateStepDetail(i, key, val) {
+            const ch = state.chapters.find(c => c.id === state.activeChapter);
+            ch.steps[i][key] = parseInt(val) || 0;
+            saveData();
+            updatePreview();
+        }
+
+
+        function updatePreview() {
+            const ch = state.chapters.find(c => c.id === state.activeChapter);
+
+            // HUD
+            document.getElementById('hudPreview').innerHTML = ch.steps.map(s => `
+            <div style="margin-bottom:8px; display:flex; gap:10px;">
+                <span style="color:var(--primary);">•</span>
+                <span>${s.text.replace(/\\v\[(\d+)\]/g, '<span style="color:var(--accent-yellow)">0</span>')}</span>
+            </div>
+        `).join('') || '<div style="color:var(--text-dim); font-size:0.8rem;">Добавьте этапы, чтобы увидеть превью...</div>';
+
+            // Selected Step Logic
+            const s = ch.steps[state.selectedStep];
+            if (s) {
+                const target = s.targetVar || (ch.mainVar + 1);
+                const count = s.count || 3;
+                const step = state.selectedStep + 1;
+                const next = state.selectedStep + 2;
+
+                let code = ``;
+                if (state.snippetMode === 'start') {
+                    // Code to SHOW this step on screen
+                    code = `if ($gameVariables.value(${ch.mainVar}) < ${step}) {\n  $gameVariables.setValue(${ch.mainVar}, ${step});\n  SoundManager.playOk();\n}`;
+                } else if (state.snippetMode === 'auto') {
+                    code = `if ($gameVariables.value(${ch.mainVar}) === ${step} && $gameVariables.value(${target}) >= ${count}) {\n  $gameVariables.setValue(${ch.mainVar}, ${next});\n  SoundManager.playOk();\n}`;
+                } else {
+                    // Code to FINISH this step and move to NEXT
+                    code = `if ($gameVariables.value(${ch.mainVar}) < ${next}) {\n  $gameVariables.setValue(${ch.mainVar}, ${next});\n  SoundManager.playOk();\n}`;
+                }
+
+                document.getElementById('currentEventSnippet').innerText = code;
+
+                // Bonus Snippet for Gathering (Items/Kills)
+                let bonus = '';
+                if (s.type === 'item') {
+                    bonus = `<div style="margin-top:10px; background:rgba(0,0,0,0.3); padding:10px; border-radius:5px; border-left:3px solid var(--accent-blue);">`;
+                    bonus += `<span style="color:var(--accent-blue); font-weight:700;">КОД ПОДНЯТИЯ ПРЕДМЕТА (SAFE):</span><br>`;
+                    bonus += `<code style="font-size:0.7rem;">if ($gameVariables.value(${ch.mainVar}) === ${step}) {\n  $gameVariables.setValue(${target}, $gameVariables.value(${target}) + 1);\n  SoundManager.playShop();\n}</code><br>`;
+                    bonus += `<span style="font-size:0.75rem; color:var(--text-dim);">Этот код безопаснее и не выдаст ошибку!</span></div>`;
+                }
+
+                // NPC Instructions
+                let ins = `<div style="background:rgba(255,255,255,0.02); padding:15px; border-radius:10px; border-left: 3px solid var(--accent-yellow);">`;
+                ins += `<div style="color:var(--accent-yellow); font-weight:700; margin-bottom:5px;">ЭТАП ${step}: ${s.text}</div>`;
+
+                if (state.snippetMode === 'start') {
+                    ins += `<p>Вставьте этот код в диалог выдающего NPC. После него квест появится на экране.</p>`;
+                } else if (state.snippetMode === 'auto') {
+                    const what = s.type === 'kill' ? 'убьете всех врагов' : 'соберете все предметы';
+                    ins += `<p><b>АВТО-ПЕРЕХОД:</b> Используйте этот код в Parallel-событии. Квест сам переключится, когда вы ${what}.</p>`;
+                } else {
+                    ins += `<p>Используйте этот код у принимающего NPC, чтобы закончить этот этап.</p>`;
+                }
+
+                // Logic Blueprint (The "How to structure event" part)
+                ins += `<div style="margin-top:20px; border-top:1px solid rgba(255,255,255,0.1); padding-top:15px;">`;
+                ins += `<span style="color:var(--accent-blue); font-weight:700; font-size:0.75rem;">🏗️ СХЕМА СОБЫТИЯ (ДЛЯ RPG MAKER):</span>`;
+                ins += `<div style="font-family:monospace; font-size:0.7rem; background:#111; padding:10px; border-radius:5px; margin-top:5px; border:1px dashed var(--accent-blue); color:#99f; line-height:1.4;">`;
+
+                if (state.snippetMode === 'start') {
+                    ins += `◆ If：Variable [${ch.mainVar}] < ${step}<br>`;
+                    ins += `  ◆ Text：Помоги мне, убей крыс!<br>`;
+                    ins += `  ◆ Script：$gameVariables.setValue(${ch.mainVar}, ${step});<br>`;
+                    ins += `◆ Else<br>`;
+                    ins += `  ◆ Text：Ну что, как там крысы?<br>`;
+                    ins += `◆ End`;
+                } else if (s.type === 'kill' || s.type === 'item') {
+                    // Specific Blueprint for Item Pickups (when looking at the item)
+                    if (s.type === 'item') {
+                        // DETECT IF THIS IS THE HACKING STEP (Step 10)
+                        if (step === 10) {
+                            ins += `<span style="color:#fff;">🏗️ СХЕМА ВЗЛОМА ДЛЯ ПОТАЙНОГО ХОДА (ШАГ 10):</span><br>`;
+                            ins += `◆ If：Variable [15] === 1 (Успех)<br>`;
+                            ins += `  ◆ Text：Система взломана! Потайной ход открыт.<br>`;
+                            ins += `  ◆ Script: $gameVariables.setValue(${ch.mainVar}, 11);<br>`;
+                            ins += `  ◆ Control Self Switch: A = ON<br>`;
+                            ins += `◆ Else If：Variable [15] === 2 (Закрыто/Ошибка)<br>`;
+                            ins += `  ◆ Text：Доступ заблокирован. Попробуйте еще раз.<br>`;
+                            ins += `  ◆ Control Variables：#0015 = 0<br>`;
+                            ins += `◆ Else (Если 0)<br>`;
+                            ins += `  ◆ Text：Перед вами терминал управления потайным ходом.<br>`;
+                            ins += `  ◆ Plugin Command：ACTPO_Hacking start 1 15<br>`;
+                            ins += `◆ End<br><br>`;
+                        } else if (step === 11) {
+                            ins += `<span style="color:#fff;">🏗️ РОБАСТНАЯ СХЕМА СЕЙФА (ШАГ 11):</span><br>`;
+                            ins += `◆ If：Variable [16] === 1 (Успех)<br>`;
+                            ins += `  ◆ Text：Щелк! Сейф открыт!<br>`;
+                            ins += `  ◆ Text: Вы нашли бухгалтерию Брунно!<br>`;
+                            ins += `  ◆ Script: $gameVariables.setValue(10, 12);<br>`;
+                            ins += `  ◆ Control Self Switch: A = ON<br>`;
+                            ins += `◆ Else If：Variable [16] === 2 (Закрыто/Ошибка)<br>`;
+                            ins += `  ◆ Text：Неверный код или вы закрыли сейф.<br>`;
+                            ins += `  ◆ Control Variables：#0016 = 0<br>`;
+                            ins += `◆ Else (Если 0)<br>`;
+                            ins += `  ◆ Text：Перед вами стальной сейф Брунно.<br>`;
+                            ins += `  ◆ Script：<br>`;
+                            ins += `    var code = "" + $gameVariables.value(17) + $gameVariables.value(18) + $gameVariables.value(19);<br>`;
+                            ins += `    SceneManager.push(Scene_SafeKeypad);<br>`;
+                            ins += `    SceneManager.prepareNextScene(code, 16);<br>`;
+                            ins += `◆ End<br><br>`;
+                        }
+                        else {
+                            ins += `<span style="color:#fff;">СХЕМА ДЛЯ ПРЕДМЕТА (внутри сундука/бутылки):</span><br>`;
+                            ins += `◆ If：Variable [${ch.mainVar}] === ${step}<br>`;
+                            ins += `  ◆ Text：Вы нашли ${s.text.split('(')[0].trim()}!<br>`;
+                            ins += `  ◆ Control Variables：#${target} += 1<br>`;
+                            ins += `  ◆ Erase Event (или переключатель)<br>`;
+                            ins += `◆ Else<br>`;
+                            ins += `  ◆ Text：Какая-то странная вещь, она мне не нужна.<br>`;
+                            ins += `◆ End<br><br>`;
+                        }
+                        ins += `<span style="color:#fff;">СХЕМА ДЛЯ NPC (сдача предмета):</span><br>`;
+                    }
+                    ins += `◆ If：Variable [${target}] >= ${count}<br>`;
+                    ins += `  ◆ Text：О, ты все собрал! Спасибо!<br>`;
+                    ins += `  ◆ Script：$gameVariables.setValue(${ch.mainVar}, ${step + 1});<br>`;
+                    ins += `◆ Else<br>`;
+                    ins += `  ◆ Text：Ты еще не все принес. Нужно еще ${count}.<br>`;
+                    ins += `◆ End`;
+                } else {
+                    ins += `◆ Text：Привет! Сходи к Айтишнику...<br>`;
+
+                    if (step === 3 || step === 6 || step === 9) {
+                        const targetVar = step === 3 ? 17 : (step === 6 ? 18 : 19);
+                        const npcName = step === 3 ? "Майк" : (step === 6 ? "Инженер" : "Крупье");
+                        ins += `  ◆ If：Variable [${ch.mainVar}] < ${next}<br>`;
+                        ins += `    ◆ Control Variables：#${targetVar} = Random (0..9)<br>`;
+                        ins += `    ◆ Script：$gameVariables.setValue(${ch.mainVar}, ${next});<br>`;
+                        ins += `  ◆ End<br>`;
+                        ins += `  ◆ Text：${npcName}: "Твоя цифра — \\v[${targetVar}]"<br>`;
+                    } else {
+                        ins += `  ◆ Script：$gameVariables.setValue(${ch.mainVar}, ${next});<br>`;
+                    }
+                }
+
+                ins += `</div></div>`;
+
+                ins += bonus; // Add bonus gathering code
+                ins += `</div>`;
+                document.getElementById('npcInstructions').innerHTML = ins;
+            } else {
+                document.getElementById('currentEventSnippet').innerText = "// Выберите этап слева...";
+                document.getElementById('npcInstructions').innerHTML = "Нажмите на любой этап слева, чтобы увидеть инструкции и код.";
+            }
+
+            // Global Code
+            generateCode();
+        }
+
+        function copyCurrentSnippet() {
+            const code = document.getElementById('currentEventSnippet').innerText;
+            navigator.clipboard.writeText(code);
+            alert("Код для события скопирован!");
+        }
+
+        function generateCode() {
+            let totalKillMap = {};
+            state.chapters.forEach(ch => {
+                if (ch.steps.length > 0) {
+                    js += `window.ACTPO_Quests[${ch.mainVar}] = {\n`;
+                    ch.steps.forEach((s, idx) => {
+                        let safeText = s.text.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+                        js += `    ${idx + 1}: "${safeText}",\n`;
+
+                        // Collect kill targets
+                        if (s.type === 'kill' && (s.enemyId || s.targetId) && s.targetVar) {
+                            totalKillMap[s.enemyId || s.targetId] = parseInt(s.targetVar);
+                        }
+                    });
+                    js += `};\n`;
+                }
+            });
+
+            js += `\nwindow.ACTPO_KillTargets = ${JSON.stringify(totalKillMap, null, 4)};`;
+            document.getElementById('codeOutput').innerText = js;
+        }
+
+        async function generateAndSave() {
+            generateCode(); // Update the UI
+            const js = document.getElementById('codeOutput').innerText;
+
+            if (fileHandle) {
+                const success = await writeToFile(js);
+                if (success) {
+                    // Show success on UI
+                    const originalStatus = document.getElementById('syncStatus').innerHTML;
+                    document.getElementById('syncStatus').innerHTML = "✨ ФАЙЛ ОБНОВЛЕН УСПЕШНО!";
+                    setTimeout(() => document.getElementById('syncStatus').innerHTML = originalStatus, 2000);
+                } else {
+                    alert("Ошибка при записи! Убедитесь, что файл не открыт в другой программе и у браузера есть доступ.");
+                }
+            } else {
+                // Fallback to clipboard if magic sync isn't enabled
+                navigator.clipboard.writeText(js);
+                alert("Код скопирован в буфер! (Включите 'Магическую синхронизацию', чтобы всё сохранялось само)");
+            }
+        }
+
+        function generateAndCopy() {
+            generateAndSave();
+        }
+
+        function saveData() {
+            localStorage.setItem('actpo_architect_v1', JSON.stringify(state));
+        }
+
+        function resetAll() {
+            if (confirm("Вы уверены, что хотите стереть все квесты?")) {
+                localStorage.removeItem('actpo_architect_v1');
+                location.reload();
+            }
+        }
+
+        init();
+    </script>
+
+</body>
+
+</html>

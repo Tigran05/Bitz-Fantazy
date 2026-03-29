@@ -1,0 +1,32 @@
+# .gitignore для RPG Maker MV проекта
+
+# Системные файлы
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Временные файлы
+*.tmp
+*.bak
+*.swp
+*~
+
+# Логи
+*.log
+npm-debug.log*
+
+# Зависимости (если используется npm)
+node_modules/
+
+# Файлы редактора
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Файлы сохранений (опционально, если не хотите их в репозитории)
+# save/
+# *.rpgsave
+
+# Файлы конфигурации (опционально)
+# config.rpgmvp
