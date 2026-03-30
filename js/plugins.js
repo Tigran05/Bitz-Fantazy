@@ -10,5 +10,6 @@ var $plugins =
 {"name":"ACTPO_QuestConfig","status":true,"description":"","parameters":{}},
 {"name":"ACTPO_KillTracker","status":true,"description":"v1.0 Simple Kill Tracker [ACTPO]","parameters":{}},
 {"name":"ACTPO_SimpleHUD","status":true,"description":"v1.0 Ultra-Simple Quest HUD [ACTPO]","parameters":{"HUD X":"Graphics.boxWidth - 450","HUD Y":"10","HUD Width":"400","Font Size":"16"}},
-{"name":"ACTPO_SafeKeypad","status":true,"description":"[v1.0] Визуальный ввод кода для сейфов (специально для Bitz)","parameters":{}}
+{"name":"ACTPO_SafeKeypad","status":true,"description":"[v1.0] Визуальный ввод кода для сейфов (специально для Bitz)","parameters":{}},
+{"name":"TelegramWebApp","status":true,"description":"Telegram Web App Integration & Fixes","parameters":{}}
 ];
