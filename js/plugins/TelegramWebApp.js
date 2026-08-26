@@ -1,28 +1,20 @@
 /*:
- * @plugindesc Telegram Web App Integration & Orientation Fix
+ * @plugindesc Telegram Web App Integration
  * @author Bitz Fantasy
  *
  * @help
  * Telegram Web App integration for RPG Maker MV.
- *
- * The game is locked visually to landscape mode.
- * When the device is rotated to portrait, an overlay is shown.
- * The RPG Maker SceneManager is NOT stopped/resumed because this
- * can cause crashes during Telegram viewport changes.
+ * Handles portrait/landscape mode without stopping
+ * or resizing the RPG Maker game manually.
  */
 
 (function () {
     'use strict';
 
-    // ---------------------------------------------------------
-    // TelegramGameProxy polyfill
-    // ---------------------------------------------------------
-
+    // Telegram compatibility
     if (!window.TelegramGameProxy) {
         window.TelegramGameProxy = {
-            receiveEvent: function () {
-                // Compatibility with some Telegram clients
-            }
+            receiveEvent: function () {}
         };
     }
 
@@ -45,20 +37,22 @@
 
         var tg = window.Telegram.WebApp;
 
-        $gameTemp.tg = tg;
+        if (typeof $gameTemp !== 'undefined') {
+            $gameTemp.tg = tg;
+        }
 
         // Expand Telegram WebApp
         try {
-            if (tg.expand) {
+            if (typeof tg.expand === 'function') {
                 tg.expand();
             }
         } catch (e) {
             console.warn('Telegram expand error:', e);
         }
 
-        // Prevent accidental closing by vertical swipes
+        // Disable vertical swipes
         try {
-            if (tg.disableVerticalSwipes) {
+            if (typeof tg.disableVerticalSwipes === 'function') {
                 tg.disableVerticalSwipes();
             }
         } catch (e) {
@@ -67,61 +61,66 @@
 
         // Colors
         try {
-            if (tg.setHeaderColor) {
+            if (typeof tg.setHeaderColor === 'function') {
                 tg.setHeaderColor('#000000');
             }
 
-            if (tg.setBackgroundColor) {
+            if (typeof tg.setBackgroundColor === 'function') {
                 tg.setBackgroundColor('#000000');
             }
         } catch (e) {
             console.warn('Telegram color error:', e);
         }
 
-        // Create orientation overlay
+        // Create orientation screen
         this.createOrientationOverlay();
 
-        // Initial orientation check
-        this.checkGameOrientation();
+        // Initial check
+        this.updateOrientation();
 
-        // Window resize
+        // Browser resize
         window.addEventListener('resize', function () {
-            Scene_Boot.prototype.checkGameOrientation();
+            setTimeout(function () {
+                Scene_Boot.prototype.updateOrientation();
+            }, 100);
         });
 
-        // Device orientation
+        // Device rotation
         window.addEventListener('orientationchange', function () {
             setTimeout(function () {
-                Scene_Boot.prototype.checkGameOrientation();
-            }, 250);
+                Scene_Boot.prototype.updateOrientation();
+            }, 300);
         });
 
         // Telegram viewport
         try {
-            tg.onEvent('viewportChanged', function () {
+            if (typeof tg.onEvent === 'function') {
 
-                // Do not immediately resize RPG Maker.
-                // Telegram may fire this event several times while
-                // the viewport is changing.
+                tg.onEvent('viewportChanged', function () {
 
-                Scene_Boot.prototype.checkGameOrientation();
+                    setTimeout(function () {
+                        Scene_Boot.prototype.updateOrientation();
+                    }, 150);
 
-                Scene_Boot.prototype.scheduleGameResize();
-            });
+                });
 
+            }
         } catch (e) {
             console.warn('Telegram viewport event error:', e);
         }
 
         // Telegram ready
         try {
-            tg.ready();
+            if (typeof tg.ready === 'function') {
+                tg.ready();
+            }
         } catch (e) {
             console.warn('Telegram ready error:', e);
         }
 
         console.log('Telegram Web App initialized');
     };
+
 
     // ---------------------------------------------------------
     // Orientation overlay
@@ -141,10 +140,10 @@
         overlay.style.top = '0';
         overlay.style.left = '0';
 
-        overlay.style.width = '100vw';
-        overlay.style.height = '100vh';
+        overlay.style.width = '100%';
+        overlay.style.height = '100%';
 
-        overlay.style.backgroundColor = '#000000';
+        overlay.style.background = '#000000';
 
         overlay.style.zIndex = '999999';
 
@@ -156,15 +155,16 @@
 
         overlay.style.color = '#ffffff';
 
-        overlay.style.fontFamily = 'Arial, sans-serif';
+        overlay.style.fontFamily =
+            'Arial, sans-serif';
 
         overlay.style.textAlign = 'center';
 
-        overlay.style.padding = '20px';
-
         overlay.style.boxSizing = 'border-box';
 
-        // Rotate icon
+        overlay.style.padding = '20px';
+
+        // Rotation icon
         var icon = document.createElement('div');
 
         icon.innerHTML = '&#8635;';
@@ -190,45 +190,48 @@
         document.body.appendChild(overlay);
     };
 
+
     // ---------------------------------------------------------
     // Orientation check
     // ---------------------------------------------------------
 
-    Scene_Boot.prototype.checkGameOrientation = function () {
+    Scene_Boot.prototype.updateOrientation = function () {
 
         try {
 
             var overlay =
-                document.getElementById('orientation-overlay');
+                document.getElementById(
+                    'orientation-overlay'
+                );
 
             if (!overlay) {
                 return;
             }
 
-            var width =
-                window.visualViewport
-                    ? window.visualViewport.width
-                    : window.innerWidth;
+            var width = window.innerWidth;
+            var height = window.innerHeight;
 
-            var height =
-                window.visualViewport
-                    ? window.visualViewport.height
-                    : window.innerHeight;
+            // Telegram viewport can temporarily report
+            // strange dimensions during rotation.
+            // Ignore invalid values.
 
-            var portrait = height > width;
+            if (
+                !width ||
+                !height ||
+                width < 100 ||
+                height < 100
+            ) {
+                return;
+            }
 
-            if (portrait) {
+            if (height > width) {
 
-                // Portrait:
-                // show overlay only.
-
+                // Portrait
                 overlay.style.display = 'flex';
 
             } else {
 
-                // Landscape:
-                // hide overlay.
-
+                // Landscape
                 overlay.style.display = 'none';
 
             }
@@ -236,70 +239,11 @@
         } catch (e) {
 
             console.error(
-                'Orientation check error:',
+                'Orientation error:',
                 e
             );
 
-            if (window.logError) {
-                window.logError(
-                    'Orientation Error: ' +
-                    e.message
-                );
-            }
         }
-    };
-
-    // ---------------------------------------------------------
-    // Safe RPG Maker resize
-    // ---------------------------------------------------------
-
-    Scene_Boot.prototype.scheduleGameResize = function () {
-
-        if (Scene_Boot.prototype._resizeTimer) {
-            clearTimeout(
-                Scene_Boot.prototype._resizeTimer
-            );
-        }
-
-        Scene_Boot.prototype._resizeTimer =
-            setTimeout(function () {
-
-                try {
-
-                    var width = window.innerWidth;
-                    var height = window.innerHeight;
-
-                    // Do not resize while portrait.
-                    if (height > width) {
-                        return;
-                    }
-
-                    if (
-                        typeof Graphics !== 'undefined' &&
-                        Graphics._onWindowResize
-                    ) {
-
-                        Graphics._onWindowResize();
-
-                    }
-
-                } catch (e) {
-
-                    console.error(
-                        'Safe resize error:',
-                        e
-                    );
-
-                    if (window.logError) {
-                        window.logError(
-                            'Resize Error: ' +
-                            e.message
-                        );
-                    }
-
-                }
-
-            }, 300);
     };
 
 })();
