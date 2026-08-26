@@ -99,7 +99,7 @@
             screenHeight / gameHeight;
 
         var scale =
-            Math.min(scaleX, scaleY);
+            Math.max(scaleX, scaleY);
 
         canvas.style.position = 'fixed';
 
