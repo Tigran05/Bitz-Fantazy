@@ -1,178 +1,305 @@
 /*:
- * @plugindesc Telegram Web App Integration & Fixes
+ * @plugindesc Telegram Web App Integration & Orientation Fix
  * @author Bitz Fantasy
  *
  * @help
- * This plugin integrates Telegram Web App features and fixes common issues.
- * 
- * Features:
- * - Automatically expands the app to full screen.
- * - Disables vertical swipes to prevent accidental closing.
- * - Sets the header and background colors.
- * - Exposes the Telegram Web App object as $gameTemp.tg
+ * Telegram Web App integration for RPG Maker MV.
+ *
+ * The game is locked visually to landscape mode.
+ * When the device is rotated to portrait, an overlay is shown.
+ * The RPG Maker SceneManager is NOT stopped/resumed because this
+ * can cause crashes during Telegram viewport changes.
  */
 
 (function () {
-    // Polyfill for TelegramGameProxy to prevent errors in some Telegram clients
+    'use strict';
+
+    // ---------------------------------------------------------
+    // TelegramGameProxy polyfill
+    // ---------------------------------------------------------
+
     if (!window.TelegramGameProxy) {
         window.TelegramGameProxy = {
             receiveEvent: function () {
-                // console.log('TelegramGameProxy.receiveEvent called (polyfilled)');
+                // Compatibility with some Telegram clients
             }
         };
     }
 
+    // ---------------------------------------------------------
+    // Telegram initialization
+    // ---------------------------------------------------------
+
     var _Scene_Boot_start = Scene_Boot.prototype.start;
+
     Scene_Boot.prototype.start = function () {
         _Scene_Boot_start.call(this);
         this.initTelegramWebApp();
     };
 
     Scene_Boot.prototype.initTelegramWebApp = function () {
-        if (window.Telegram && window.Telegram.WebApp) {
-            var tg = window.Telegram.WebApp;
-            $gameTemp.tg = tg;
 
-            // Expand to full screen
-            tg.expand();
+        if (!window.Telegram || !window.Telegram.WebApp) {
+            return;
+        }
 
-            // Handle rotation/resize events from Telegram
-            tg.onEvent('viewportChanged', function () {
-                try {
-                    // Only resize if we are NOT in portrait mode (width > height)
-                    if (window.innerWidth >= window.innerHeight) {
-                        if (Graphics && Graphics._onWindowResize) {
-                            Graphics._onWindowResize();
-                        }
-                    }
-                } catch (e) {
-                    console.error("Telegram viewportChanged error:", e);
-                    if (window.logError) window.logError("Viewport Error: " + e.message);
-                }
-            });
+        var tg = window.Telegram.WebApp;
 
-            // Disable vertical swipes
+        $gameTemp.tg = tg;
+
+        // Expand Telegram WebApp
+        try {
+            if (tg.expand) {
+                tg.expand();
+            }
+        } catch (e) {
+            console.warn('Telegram expand error:', e);
+        }
+
+        // Prevent accidental closing by vertical swipes
+        try {
             if (tg.disableVerticalSwipes) {
                 tg.disableVerticalSwipes();
             }
+        } catch (e) {
+            console.warn('Telegram swipe error:', e);
+        }
 
-            // Set colors
+        // Colors
+        try {
             if (tg.setHeaderColor) {
                 tg.setHeaderColor('#000000');
             }
+
             if (tg.setBackgroundColor) {
                 tg.setBackgroundColor('#000000');
             }
-
-            // Force Landscape Mode
-            this.forceLandscapeMode();
-
-            // Notify Telegram that the app is ready
-            tg.ready();
-
-            console.log("Telegram Web App initialized");
+        } catch (e) {
+            console.warn('Telegram color error:', e);
         }
+
+        // Create orientation overlay
+        this.createOrientationOverlay();
+
+        // Initial orientation check
+        this.checkGameOrientation();
+
+        // Window resize
+        window.addEventListener('resize', function () {
+            Scene_Boot.prototype.checkGameOrientation();
+        });
+
+        // Device orientation
+        window.addEventListener('orientationchange', function () {
+            setTimeout(function () {
+                Scene_Boot.prototype.checkGameOrientation();
+            }, 250);
+        });
+
+        // Telegram viewport
+        try {
+            tg.onEvent('viewportChanged', function () {
+
+                // Do not immediately resize RPG Maker.
+                // Telegram may fire this event several times while
+                // the viewport is changing.
+
+                Scene_Boot.prototype.checkGameOrientation();
+
+                Scene_Boot.prototype.scheduleGameResize();
+            });
+
+        } catch (e) {
+            console.warn('Telegram viewport event error:', e);
+        }
+
+        // Telegram ready
+        try {
+            tg.ready();
+        } catch (e) {
+            console.warn('Telegram ready error:', e);
+        }
+
+        console.log('Telegram Web App initialized');
     };
 
-    Scene_Boot.prototype.forceLandscapeMode = function () {
-        // Create overlay element
+    // ---------------------------------------------------------
+    // Orientation overlay
+    // ---------------------------------------------------------
+
+    Scene_Boot.prototype.createOrientationOverlay = function () {
+
+        if (document.getElementById('orientation-overlay')) {
+            return;
+        }
+
         var overlay = document.createElement('div');
+
         overlay.id = 'orientation-overlay';
+
         overlay.style.position = 'fixed';
         overlay.style.top = '0';
         overlay.style.left = '0';
-        overlay.style.width = '100%';
-        overlay.style.height = '100%';
+
+        overlay.style.width = '100vw';
+        overlay.style.height = '100vh';
+
         overlay.style.backgroundColor = '#000000';
+
         overlay.style.zIndex = '999999';
-        overlay.style.display = 'none'; // Hidden by default
+
+        overlay.style.display = 'none';
+
         overlay.style.flexDirection = 'column';
         overlay.style.justifyContent = 'center';
         overlay.style.alignItems = 'center';
+
         overlay.style.color = '#ffffff';
+
         overlay.style.fontFamily = 'Arial, sans-serif';
+
         overlay.style.textAlign = 'center';
 
-        // Add icon and text
+        overlay.style.padding = '20px';
+
+        overlay.style.boxSizing = 'border-box';
+
+        // Rotate icon
         var icon = document.createElement('div');
-        icon.innerHTML = '&#8635;'; // Rotate icon
-        icon.style.fontSize = '50px';
+
+        icon.innerHTML = '&#8635;';
+
+        icon.style.fontSize = '60px';
         icon.style.marginBottom = '20px';
 
+        // Text
         var text = document.createElement('div');
-        text.innerText = 'Пожалуйста, поверните устройство\nв горизонтальное положение';
+
+        text.innerText =
+            'Пожалуйста, поверните устройство\n' +
+            'в горизонтальное положение';
+
         text.style.fontSize = '20px';
+        text.style.lineHeight = '1.5';
+
+        text.style.whiteSpace = 'pre-line';
 
         overlay.appendChild(icon);
         overlay.appendChild(text);
+
         document.body.appendChild(overlay);
+    };
 
-        var wasPortrait = false;
-        var checkOrientation = function () {
-            try {
-                // Check if portrait
-                if (window.innerHeight > window.innerWidth) {
-                    overlay.style.display = 'flex';
-                    if (!wasPortrait) {
-                        wasPortrait = true;
-                        if (SceneManager && SceneManager.stop) {
-                            console.log("Pausing game due to portrait mode");
-                            SceneManager.stop();
-                        }
-                        if (AudioManager && AudioManager.stopAll) {
-                            AudioManager.stopAll();
-                        }
-                    }
-                } else {
-                    overlay.style.display = 'none';
-                    if (wasPortrait) {
-                        wasPortrait = false;
-                        if (SceneManager && SceneManager.resume) {
-                            console.log("Resuming game due to landscape mode");
-                            SceneManager.resume();
-                        }
-                    }
-                    // Try to lock orientation if supported and in landscape
-                    if (screen.orientation && screen.orientation.lock) {
-                        screen.orientation.lock('landscape').catch(function (err) {
-                            // Lock failed (not supported or denied), just ignore
-                        });
-                    }
-                }
-            } catch (e) {
-                console.error("checkOrientation error:", e);
-                if (window.logError) window.logError("Orientation Error: " + e.message);
+    // ---------------------------------------------------------
+    // Orientation check
+    // ---------------------------------------------------------
+
+    Scene_Boot.prototype.checkGameOrientation = function () {
+
+        try {
+
+            var overlay =
+                document.getElementById('orientation-overlay');
+
+            if (!overlay) {
+                return;
             }
-        };
 
-        // Initial check
-        checkOrientation();
+            var width =
+                window.visualViewport
+                    ? window.visualViewport.width
+                    : window.innerWidth;
 
-        // Listen for resize and orientation changes
-        window.addEventListener('resize', function () {
-            try {
-                checkOrientation();
-            } catch (e) {
-                if (window.logError) window.logError("Resize Error: " + e.message);
+            var height =
+                window.visualViewport
+                    ? window.visualViewport.height
+                    : window.innerHeight;
+
+            var portrait = height > width;
+
+            if (portrait) {
+
+                // Portrait:
+                // show overlay only.
+
+                overlay.style.display = 'flex';
+
+            } else {
+
+                // Landscape:
+                // hide overlay.
+
+                overlay.style.display = 'none';
+
             }
-        });
-        window.addEventListener('orientationchange', function () {
-            try {
-                checkOrientation();
-            } catch (e) {
-                if (window.logError) window.logError("OrientationChange Error: " + e.message);
-            }
-        });
 
-        // Also listen to Telegram viewport changes
-        if ($gameTemp.tg) {
-            $gameTemp.tg.onEvent('viewportChanged', function () {
-                try {
-                    checkOrientation();
-                } catch (e) {
-                    if (window.logError) window.logError("TG Viewport Error: " + e.message);
-                }
-            });
+        } catch (e) {
+
+            console.error(
+                'Orientation check error:',
+                e
+            );
+
+            if (window.logError) {
+                window.logError(
+                    'Orientation Error: ' +
+                    e.message
+                );
+            }
         }
     };
+
+    // ---------------------------------------------------------
+    // Safe RPG Maker resize
+    // ---------------------------------------------------------
+
+    Scene_Boot.prototype.scheduleGameResize = function () {
+
+        if (Scene_Boot.prototype._resizeTimer) {
+            clearTimeout(
+                Scene_Boot.prototype._resizeTimer
+            );
+        }
+
+        Scene_Boot.prototype._resizeTimer =
+            setTimeout(function () {
+
+                try {
+
+                    var width = window.innerWidth;
+                    var height = window.innerHeight;
+
+                    // Do not resize while portrait.
+                    if (height > width) {
+                        return;
+                    }
+
+                    if (
+                        typeof Graphics !== 'undefined' &&
+                        Graphics._onWindowResize
+                    ) {
+
+                        Graphics._onWindowResize();
+
+                    }
+
+                } catch (e) {
+
+                    console.error(
+                        'Safe resize error:',
+                        e
+                    );
+
+                    if (window.logError) {
+                        window.logError(
+                            'Resize Error: ' +
+                            e.message
+                        );
+                    }
+
+                }
+
+            }, 300);
+    };
+
 })();
