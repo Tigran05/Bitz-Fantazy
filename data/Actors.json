@@ -1,7 +1,7 @@
 [
 null,
-{"id":1,"battlerName":"kate","characterIndex":0,"characterName":"катя","classId":1,"equips":[0,7,20,0,0],"faceIndex":0,"faceName":"Kate","traits":[],"initialLevel":1,"maxLevel":99,"name":"Катя","nickname":"","note":"","profile":""},
-{"id":2,"battlerName":"Ape","characterIndex":0,"characterName":"Эйп","classId":2,"equips":[0,0,0,0,0],"faceIndex":0,"faceName":"APE","traits":[],"initialLevel":1,"maxLevel":99,"name":"Эйп","nickname":"","note":"","profile":""},
-{"id":3,"battlerName":"Lici","characterIndex":0,"characterName":"Личи","classId":3,"equips":[0,0,0,0,0],"faceIndex":0,"faceName":"Lichi","traits":[],"initialLevel":1,"maxLevel":99,"name":"Личи","nickname":"","note":"","profile":""},
-{"id":4,"battlerName":"Aleco","characterIndex":0,"characterName":"Алеко","classId":4,"equips":[0,0,0,0,0],"faceIndex":0,"faceName":"Aleco","traits":[],"initialLevel":1,"maxLevel":99,"name":"Алеко","nickname":"","note":"","profile":""}
+{"id":1,"battlerName":"kate","characterIndex":0,"characterName":"kate","classId":1,"equips":[0,7,20,0,0],"faceIndex":0,"faceName":"Kate","traits":[],"initialLevel":1,"maxLevel":99,"name":"Катя","nickname":"","note":"","profile":""},
+{"id":2,"battlerName":"Ape","characterIndex":0,"characterName":"Ape","classId":2,"equips":[0,0,0,0,0],"faceIndex":0,"faceName":"APE","traits":[],"initialLevel":1,"maxLevel":99,"name":"Эйп","nickname":"","note":"","profile":""},
+{"id":3,"battlerName":"Lici","characterIndex":0,"characterName":"Lici","classId":3,"equips":[0,0,0,0,0],"faceIndex":0,"faceName":"Lichi","traits":[],"initialLevel":1,"maxLevel":99,"name":"Личи","nickname":"","note":"","profile":""},
+{"id":4,"battlerName":"Aleco","characterIndex":0,"characterName":"Aleco","classId":4,"equips":[0,0,0,0,0],"faceIndex":0,"faceName":"Aleco","traits":[],"initialLevel":1,"maxLevel":99,"name":"Алеко","nickname":"","note":"","profile":""}
 ]
