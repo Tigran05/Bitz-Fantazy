@@ -13,9 +13,13 @@ var $plugins =
 {"name":"ACTPO_SafeKeypad","status":true,"description":"[v1.0] Визуальный ввод кода для сейфов (специально для Bitz)","parameters":{}},
 {"name":"TelegramWebApp","status":true,"description":"Telegram Web App Integration & Fixes","parameters":{}},
 {"name":"LockPuzzleMV","status":true,"description":"v4.0 Touch-first lockpicking. One-finger control, no Enter required.","parameters":{}},
-{"name":"BF_RatCatch","status":true,"description":"BitzFantasy — Мини-игра ловли крыс v2. Картинка RatRun.png, без знака $.","parameters":{}},
-{"name":"BF_Nitrogen","status":true,"description":"BitzFantasy — Мини-игра жидкого азота. RPG Maker MV.","parameters":{}},
-{"name":"BF_Cheater","status":true,"description":"BitzFantasy — мини-игра разоблачения жулика.","parameters":{}},
+{"name":"BF_RatCatch","status":false,"description":"BF RatCatch v4 - Broom chase mini-game for Bitz Fantasy","parameters":{}},
+{"name":"BF_Nitrogen","status":false,"description":"BitzFantasy — Мини-игра жидкого азота. RPG Maker MV.","parameters":{}},
+{"name":"BF_Cheater","status":false,"description":"BitzFantasy — мини-игра разоблачения жулика.","parameters":{}},
 {"name":"SafeCodeUI","status":true,"description":"[BitzFantasy] Красивый сенсорный кодовый замок сейфа. RPG Maker MV.","parameters":{}},
-{"name":"BF_BrunoInterrogation","status":true,"description":"BitzFantasy — мини-приложение «Допрос Бруно» v1.0","parameters":{}}
+{"name":"BF_BrunoInterrogation","status":false,"description":"BitzFantasy — Допрос Бруно v2.0 (мышь + touch)","parameters":{}},
+{"name":"BF_Cheater_FULL","status":true,"description":"BitzFantasy — Разоблачение жулика v3.0 Full","parameters":{}},
+{"name":"BF_BrunoInterrogation_FULL","status":true,"description":"BitzFantasy — Допрос Бруно v3.0 Full","parameters":{}},
+{"name":"BF_Nitrogen_FULL","status":true,"description":"BitzFantasy — Мини-игра жидкого азота v3.0 Full","parameters":{}},
+{"name":"BF_RatCatch","status":true,"description":"Bitz Fantasy - Rat Catch v8. Fixed MV Bitmap error, clearer broom controls and reliable quest completion.","parameters":{}}
 ];
