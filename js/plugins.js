@@ -3,23 +3,17 @@
 var $plugins =
 [
 {"name":"Community_Basic","status":true,"description":"Plugin used to set basic parameters.","parameters":{"cacheLimit":"20","screenWidth":"816","screenHeight":"624","changeWindowWidthTo":"","changeWindowHeightTo":"","renderingMode":"auto","alwaysDash":"off"}},
-{"name":"ACTPO_AutoBalance","status":false,"description":"v3.6 Автоматическая балансировка характеристик врагов по уровню партии [ACTPO]","parameters":{"EnableAutoBalance":"true","BalanceFormula":"3.00","Multiplier":"0.1","HPCoefficient":"1.0","ATKCoefficient":"0.8","BossHPCoefficient":"1.0","BossATKCoefficient":"1.0","MiniBossHPCoefficient":"1.0","MiniBossATKCoefficient":"1.0","BossMultiplier":"1.5","BossNote":"<boss>","MiniBossNote":"<miniboss>","MiniBossMultiplier":"1.2","ScaleHP":"true","ScaleMP":"true","ScaleATK":"true","ScaleDEF":"true","ScaleMAT":"true","ScaleMDF":"true","ScaleAGI":"true","ScaleLUK":"true","ScaleEXP":"true","ScaleGold":"true","MinLevel":"1","MaxLevel":"99","MinMultiplier":"0.5","MaxMultiplier":"5.0","DifficultyScaling":"true","DebugMode":"false"}},
-{"name":"ACTPO_EnemyAnimations","status":true,"description":"v1.0.0 - ACTPO Система анимации врагов (SV спрайты + эффекты) [ACTPO]","parameters":{"Debug":"false","No Movement":"false","Enemies Celebrate":"true","SV Enemies Collapse":"true"}},
-{"name":"ACTPO_EnemyHP","status":true,"description":"v1.1.0 Отображение здоровья врагов (Universal) [ACTPO]","parameters":{"Показывать HP Бары":"true","Показывать HP Текст":"true","Ширина HP Бара":"100","Высота HP Бара":"8","Смещение Y от спрайта":"-50","Текст Y смещение":"-65","Размер шрифта":"14","Цвет фона HP Бара":"#000000","Цвет заполнения HP Бара":"#ff0000","Цвет текста HP":"#ffffff","Включить анимации":"true","Задержка скрытия (секунды)":"0","Показывать только при уроне":"false"}},
-{"name":"ACTPO_Minimap","status":false,"description":"v1.0 Миникарта [ACTPO UI]","parameters":{"Map X":"Graphics.boxWidth - 400","Map Y":"10","Map Width":"150","Map Height":"150","Scale":"4","Opacity":"200","Wall Color":"#666666","Floor Color":"#cccccc","Player Color":"#ff0000"}},
-{"name":"ACTPO_QuestConfig","status":true,"description":"","parameters":{}},
-{"name":"ACTPO_KillTracker","status":true,"description":"v1.0 Simple Kill Tracker [ACTPO]","parameters":{}},
-{"name":"ACTPO_SimpleHUD","status":true,"description":"v1.0 Ultra-Simple Quest HUD [ACTPO]","parameters":{"HUD X":"Graphics.boxWidth - 450","HUD Y":"10","HUD Width":"400","Font Size":"16"}},
-{"name":"ACTPO_SafeKeypad","status":true,"description":"[v1.0] Визуальный ввод кода для сейфов (специально для Bitz)","parameters":{}},
 {"name":"TelegramWebApp","status":true,"description":"Telegram Web App Integration & Fixes","parameters":{}},
-{"name":"LockPuzzleMV","status":true,"description":"v4.0 Touch-first lockpicking. One-finger control, no Enter required.","parameters":{}},
-{"name":"BF_RatCatch","status":false,"description":"BF RatCatch v4 - Broom chase mini-game for Bitz Fantasy","parameters":{}},
-{"name":"BF_Nitrogen","status":false,"description":"BitzFantasy — Мини-игра жидкого азота. RPG Maker MV.","parameters":{}},
-{"name":"BF_Cheater","status":false,"description":"BitzFantasy — мини-игра разоблачения жулика.","parameters":{}},
-{"name":"SafeCodeUI","status":true,"description":"[BitzFantasy] Красивый сенсорный кодовый замок сейфа. RPG Maker MV.","parameters":{}},
-{"name":"BF_BrunoInterrogation","status":false,"description":"BitzFantasy — Допрос Бруно v2.0 (мышь + touch)","parameters":{}},
 {"name":"BF_Cheater_FULL","status":true,"description":"BitzFantasy — Разоблачение жулика v3.0 Full","parameters":{}},
 {"name":"BF_BrunoInterrogation_FULL","status":true,"description":"BitzFantasy — Допрос Бруно v3.0 Full","parameters":{}},
 {"name":"BF_Nitrogen_FULL","status":true,"description":"BitzFantasy — Мини-игра жидкого азота v3.0 Full","parameters":{}},
-{"name":"BF_RatCatch","status":true,"description":"Bitz Fantasy - Rat Catch v8. Fixed MV Bitmap error, clearer broom controls and reliable quest completion.","parameters":{}}
+{"name":"BF_RatCatch","status":true,"description":"Bitz Fantasy - Rat Catch v8. Fixed MV Bitmap error, clearer broom controls and reliable quest completion.","parameters":{}},
+{"name":"BF_DetectiveMode","status":true,"description":"Bitz Fantasy — детективный режим: отключает боевые столкновения.","parameters":{}},
+{"name":"BF_CaseFiles","status":true,"description":"Bitz Fantasy — seven detective cases and evidence puzzles","parameters":{}},
+{"name":"BF_GearMenu","status":true,"description":"Bitz Fantasy - Полная замена стандартного меню на меню-шестерёнку.","parameters":{}},
+{"name":"BF_QuestSystem","status":true,"description":"Bitz Fantasy — единый движок квестов, шагов, журнала и мини-приложений","parameters":{}},
+{"name":"BF_QuestConfig","status":true,"description":"Bitz Fantasy — единый редактируемый конфиг всех квестов","parameters":{}},
+{"name":"BF_RatCatch","status":true,"description":"Bitz Fantasy — BF_RatCatch. Puzzle mini-game: rats, baited mousetrap, vents, fan, valve, crates and visible airflow.","parameters":{}},
+{"name":"BF_Inventory","status":true,"description":"Bitz Fantasy — Inventory / Bag UI. Adds a separate inventory button beside the journal and gear menu.","parameters":{}},
+{"name":"BF_QuestMap","status":true,"description":"Bitz Fantasy — красивая карта-пергамент: местность, игрок, текущая цель и маршрут","parameters":{}}
 ];

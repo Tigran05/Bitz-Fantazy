@@ -1,289 +1,387 @@
 /*:
- * @plugindesc Bitz Fantasy - Rat Catch v14. Catch all 6 rats with clean selection and 4-frame animation.
- * @author BF
- * @help
- * Plugin command: RatCatch start
+ * @plugindesc Bitz Fantasy — BF_RatCatch. Puzzle mini-game: rats, baited mousetrap, vents, fan, valve, crates and visible airflow.
+ * @author ASTROLIT
  *
- * Goal: catch ALL SIX rats. Click a rat to select it, then use the arrows around it
- * to drive that rat into the trap. Keyboard: arrows / WASD.
- * When a rat is caught it disappears from the room and the next uncaught rat can be selected.
- * Success after all 6 are caught: Variable 11 + 1 and Self Switch A ON.
+ * @help
+ * Plugin command:
+ *   BF_RatCatch start
+ *
+ * Script call:
+ *   BF_RatCatch_Start();
+ *
+ * Result:
+ *   Variable 11 = 1
+ *   Self Switch A of the launching event = ON
+ *
+ * Controls:
+ *   Mouse / touch — interact and drag cheese/crates
+ *   ESC — exit
+ *   R — reset
+ *   S — hint
  */
 (function(){
 'use strict';
 
-var GAME_TIME = 60 * 60;
-var AX=40, AY=78, AW=760, AH=430;
-var RAT_R=17;
+var W=1280,H=720,TOTAL=6,RESULT_VAR=11,WAIT='bfRatCatchWait';
+var ROOT='BF_RatCatch/';
+var origin={mapId:0,eventId:0};
+var cache={};
 
-function RatCatchScene(){ this.initialize.apply(this,arguments); }
-RatCatchScene.prototype=Object.create(Scene_Base.prototype);
-RatCatchScene.prototype.constructor=RatCatchScene;
+function img(name){
+  if(!cache[name]) cache[name]=ImageManager.loadPicture(ROOT+name);
+  return cache[name];
+}
+function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+function dist(ax,ay,bx,by){ var dx=ax-bx,dy=ay-by; return Math.sqrt(dx*dx+dy*dy); }
+function insidePoly(x,y,p){
+  var c=false;
+  for(var i=0,j=p.length-1;i<p.length;j=i++){
+    var xi=p[i][0],yi=p[i][1],xj=p[j][0],yj=p[j][1];
+    if(((yi>y)!==(yj>y)) && x < (xj-xi)*(y-yi)/(yj-yi)+xi) c=!c;
+  }
+  return c;
+}
+function circleRect(cx,cy,r,rect){
+  var nx=clamp(cx,rect.x,rect.x+rect.w),ny=clamp(cy,rect.y,rect.y+rect.h);
+  var dx=cx-nx,dy=cy-ny; return dx*dx+dy*dy<=r*r;
+}
+function pointerHit(x,y,cx,cy,r){ return dist(x,y,cx,cy)<=r; }
+function seOk(){ try{SoundManager.playOk();}catch(e){} }
+function seBuzzer(){ try{SoundManager.playBuzzer();}catch(e){} }
 
-RatCatchScene.prototype.initialize=function(){
- Scene_Base.prototype.initialize.call(this);
- this._time=GAME_TIME; this._hits=0; this._lastHit=-999; this._ended=false; this._won=false;
- this._eventId=0; this._selected=0; this._broomDir=-1; this._broomTimer=0; this._caught=0;
- this._trap={x:625,y:315,w:112,h:84};
- this._walls=[
-  {x:195,y:92,w:145,h:24},{x:425,y:78,w:24,h:135},
-  {x:300,y:240,w:175,h:24},{x:535,y:235,w:24,h:105},
-  {x:95,y:325,w:155,h:24}
- ];
- this.resetRats();
+function Scene_BFRatCatch(){ this.initialize.apply(this,arguments); }
+Scene_BFRatCatch.prototype=Object.create(Scene_Base.prototype);
+Scene_BFRatCatch.prototype.constructor=Scene_BFRatCatch;
+
+Scene_BFRatCatch.prototype.initialize=function(){
+  Scene_Base.prototype.initialize.call(this);
+  this._frame=0; this._caught=0; this._drag=null; this._done=false; this._tokenTaken=false;
+  this._fanOn=false; this._fanFrame=0; this._fanTimer=0;
+  this._valveMode=0; // -1 left, 0 closed, 1 right
+  this._valveAngle=0; this._valveFrom=0; this._valveTo=0; this._valveT=1;
+  this._shutters=[false,false]; this._shutterP=[0,0];
+  this._rats=[]; this._crates=[]; this._wind=[];
+  this._msg=''; this._msgT=0;
+  this._playPoly=[
+    [150,456],[260,448],[390,445],[520,442],[680,442],[835,446],[980,450],[1100,462],
+    [1200,480],[1250,520],[1270,575],[1260,640],[1235,690],[1090,710],[910,712],[730,712],
+    [545,708],[390,695],[275,665],[205,630],[170,590],[150,530]
+  ];
+  this._trap={x:640,y:590,r:82,busy:0};
+  this._cheese={x:435,y:585,homeX:435,homeY:585,placed:false,held:false,sprite:null};
 };
 
-RatCatchScene.prototype.resetRats=function(){
- var p=[
-  [80,70,1.00,.38],[235,175,-.72,.82],[385,125,.66,.88],
-  [585,85,-.82,.50],[150,275,.88,-.62],[505,365,-.65,-.78]
- ];
- this._rats=[];
- for(var i=0;i<6;i++) this._rats.push({x:p[i][0],y:p[i][1],vx:p[i][2],vy:p[i][3],r:RAT_R,phase:i*11,panic:0,caught:false});
+Scene_BFRatCatch.prototype.preload=function(){
+  var n=['background','cheese','crate','shadow','mousetrap_open','mousetrap_closed','token','wind_streak','wind_glow','valve'];
+  for(var i=0;i<4;i++){ n.push('fan_frame_'+i); n.push('shutter_frame_'+i); }
+  for(var r=1;r<=6;r++) n.push('rat_'+r);
+  n.forEach(img);
+};
+Scene_BFRatCatch.prototype.sp=function(name,x,y,scale,ax,ay,layer){
+  var s=new Sprite(img(name)); s.anchor.set(ax==null?.5:ax,ay==null?.5:ay); s.x=x; s.y=y; if(scale)s.scale.set(scale); (layer||this._world).addChild(s); return s;
 };
 
-RatCatchScene.prototype.create=function(){
- Scene_Base.prototype.create.call(this);
- this.createBackground(); this.createArena(); this.createRats(); this.createSelection(); this.createHud();
- this.refreshAll();
+Scene_BFRatCatch.prototype.create=function(){
+  Scene_Base.prototype.create.call(this); this.preload();
+  this._world=new Sprite(); this.addChild(this._world);
+  this._bgLayer=new Sprite(); this._mechLayer=new Sprite(); this._objLayer=new Sprite(); this._windLayer=new Sprite(); this._ratLayer=new Sprite(); this._fxLayer=new Sprite();
+  this._world.addChild(this._bgLayer,this._mechLayer,this._objLayer,this._windLayer,this._ratLayer,this._fxLayer);
+  this._bg=new Sprite(img('background')); this._bg.x=0;this._bg.y=0;this._bgLayer.addChild(this._bg);
+  this.createMechanisms(); this.createTrap(); this.createCrates(); this.createCheese(); this.createRats(); this.createWind();
+  this.createHud(); this.resizeWorld(); this.refreshHud();
+  this.showMessage('Поставьте сыр в крысоловку.');
 };
 
-RatCatchScene.prototype.createBackground=function(){
- var s=new Sprite(new Bitmap(Graphics.boxWidth,Graphics.boxHeight)),b=s.bitmap;
- b.fillAll('#17120e'); b.fillRect(22,58,756,486,'#302319'); b.fillRect(28,64,744,474,'#4a3423');
- this.addChild(s);
+Scene_BFRatCatch.prototype.createMechanisms=function(){
+  // These coordinates are in the same 1280x720 space as the background.
+  this._leftSh=this.sp('shutter_frame_0',470,205,.86,.5,.5,this._mechLayer);
+  this._fan=this.sp('fan_frame_0',640,205,.92,.5,.5,this._mechLayer);
+  this._rightSh=this.sp('shutter_frame_0',810,205,.86,.5,.5,this._mechLayer);
+
+  // Real fixed wheel on the pipe. Only this wheel rotates; its pivot is its exact image centre.
+  this._valveX=1182; this._valveY=405;
+  this._valve=this.sp('valve',this._valveX,this._valveY,1.0,.5,.5,this._mechLayer);
 };
 
-RatCatchScene.prototype.createArena=function(){
- var s=new Sprite(new Bitmap(AW,AH)),b=s.bitmap;
- b.fillRect(0,0,AW,AH,'#5d402c'); b.fillRect(7,7,AW-14,AH-14,'#b48655'); b.fillRect(13,13,AW-26,AH-26,'#e8cf9e');
- for(var y=28;y<AH-20;y+=40)b.fillRect(18,y,AW-36,2,'#d1ae78');
- for(var x=55;x<AW-30;x+=95)b.fillRect(x,18,2,AH-36,'#dfbd87');
- for(var i=0;i<this._walls.length;i++){
-  var w=this._walls[i]; b.fillRect(w.x,w.y,w.w,w.h,'#70472c'); b.fillRect(w.x+3,w.y+3,w.w-6,w.h-6,'#a96d3e'); b.fillRect(w.x+5,w.y+5,w.w-10,3,'#c98b53');
- }
- var t=this._trap;
- b.fillRect(t.x-6,t.y-6,t.w+12,t.h+12,'#4b3020');
- b.fillRect(t.x,t.y,t.w,t.h,'#8f5d35');
- b.fillRect(t.x+9,t.y+9,t.w-18,t.h-18,'#201511');
- b.fillRect(t.x+16,t.y+16,t.w-32,t.h-32,'#0c0907');
- b.fillRect(t.x+28,t.y+29,t.w-56,3,'#a76f3f');
- b.font='bold 17px Arial'; b.textColor='#ffe8ad'; b.drawText('ЛОВУШКА',t.x,t.y+27,t.w,'center');
- b.font='12px Arial'; b.drawText('ЗАГНАТЬ СЮДА',t.x,t.y+49,t.w,'center');
- s.x=AX;s.y=AY;this.addChild(s);
+Scene_BFRatCatch.prototype.createTrap=function(){
+  this._trapSp=this.sp('mousetrap_open',this._trap.x,this._trap.y,.62,.5,.72,this._objLayer);
+};
+Scene_BFRatCatch.prototype.createCrates=function(){
+  // Ground positions from the user's marked blue zone, near the tunnel mouth.
+  var starts=[[445,468],[545,468],[645,468]];
+  for(var i=0;i<starts.length;i++){
+    var p=starts[i],shadow=this.sp('shadow',p[0],p[1]+8,.19,.5,.5,this._objLayer);
+    shadow.alpha=.16;
+    var s=this.sp('crate',p[0],p[1],.58,.5,1,this._objLayer);
+    this._crates.push({x:p[0],y:p[1],homeX:p[0],homeY:p[1],w:64,h:58,held:false,sprite:s,shadow:shadow});
+  }
+};
+Scene_BFRatCatch.prototype.createCheese=function(){
+  this._cheese.sprite=this.sp('cheese',this._cheese.x,this._cheese.y,.62,.5,1,this._objLayer);
+};
+Scene_BFRatCatch.prototype.createRats=function(){
+  var starts=[[205,525],[305,590],[420,535],[865,530],[1005,585],[1150,525]];
+  for(var i=0;i<6;i++){
+    var p=starts[i],sh=this.sp('shadow',p[0],p[1]+8,.16,.5,.5,this._ratLayer); sh.alpha=.15;
+    var s=this.sp('rat_'+(i+1),p[0],p[1],.84,.5,1,this._ratLayer);
+    this._rats.push({id:i,x:p[0],y:p[1],homeX:p[0],homeY:p[1],side:i<3?0:1,speed:28+(i%3)*2,panic:0,angle:0,target:null,caught:false,committed:false,seed:1.7*i,sprite:s,shadow:sh,wait:0,goalIndex:i});
+  }
 };
 
-RatCatchScene.prototype.createRats=function(){
- this._ratSprites=[];
- this._ratBitmaps=[];
- for(var i=0;i<6;i++){
-  var s=new Sprite(); s.anchor.x=.5; s.anchor.y=.5; s._ratIndex=i;
-  /* Uses the supplied RatRun.png: 3 frames x 4 directions.
-     Sheet layout: row 0=down/front, row 1=left, row 2=right, row 3=up/back.
-     Each frame is exactly 48x48 pixels, matching a standard RPG Maker 3x4 character sheet. */
-  s.bitmap=ImageManager.loadCharacter('RatRun');
-  s.bitmap.smooth=false;
-  s._ratFrame=0;
-  this.addChild(s); this._ratSprites.push(s); this._ratBitmaps.push(s.bitmap);
- }
+Scene_BFRatCatch.prototype.createWind=function(){
+  for(var side=0;side<2;side++){
+    for(var i=0;i<14;i++){
+      var s=new Sprite(img('wind_streak')); s.anchor.set(.05,.5); s.visible=false; s._side=side; s._i=i; s._p=i/14; s._lane=(i-6.5)*8; this._wind.push(s); this._windLayer.addChild(s);
+    }
+    var g=new Sprite(img('wind_glow')); g.anchor.set(.5,.5); g.alpha=0; g._side=side; g._glow=true; g.x=side===0?470:810; g.y=215; this._wind.push(g); this._windLayer.addChild(g);
+  }
 };
 
-/*
- * Real RatRun animation supplied by the user.
- * Three genuine walking frames are cycled continuously. Direction is selected
- * from the rat's current velocity so side-walking uses the proper side row.
- */
-RatCatchScene.prototype.drawRat=function(index){
- var s=this._ratSprites[index],r=this._rats[index];
- if(r.caught){s.visible=false;return;}
- s.visible=true;
- var bmp=s.bitmap;
- if(!bmp || !bmp.isReady || !bmp.isReady()) return;
- var dx=Math.abs(r.vx),dy=Math.abs(r.vy),row;
- if(dx>dy) row=(r.vx<0)?1:2;
- else row=(r.vy<0)?3:0;
- var moving=(dx+dy)>0.10;
- var frame=moving ? Math.floor((Graphics.frameCount+r.phase)/6)%3 : 1;
- s._ratFrame=frame;
- /* The supplied RatRun sheet is a standard 3 columns x 4 rows, 48x48 per frame. */
- s.setFrame(frame*48,row*48,48,48);
- s.scale.x=1.0;
- s.scale.y=1.0;
- bmp.smooth=false;
+Scene_BFRatCatch.prototype.createHud=function(){
+  this._hudBmp=new Bitmap(W,H); this._hudSp=new Sprite(this._hudBmp); this.addChild(this._hudSp);
+};
+Scene_BFRatCatch.prototype.refreshHud=function(){
+  var b=this._hudBmp; b.clear(); b.fontFace='Arial'; b.textColor='#fff8e6'; b.outlineColor='#000'; b.outlineWidth=6;
+  b.fillOpacity=225; b.fillRect(30,24,625,62,'#070707'); b.fillOpacity=255; b.fontSize=27; b.drawText('ЗАГОНИТЕ ВСЕХ КРЫС В ЛОВУШКУ',48,38,590,34,'left');
+  b.fillOpacity=225; b.fillRect(1070,24,180,62,'#070707'); b.fillOpacity=255; b.fontSize=25; b.drawText('КРЫСЫ: '+this._caught+' / '+TOTAL,1075,40,170,34,'center');
+  b.fontSize=20; b.outlineWidth=5; b.drawText('ESC — выйти',1090,675,160,28,'right');
+  if(this._msgT>0&&this._msg){
+    b.fillOpacity=238; b.fillRect(300,635,680,55,'#050607'); b.fillOpacity=255; b.fontSize=24; b.outlineWidth=7; b.drawText(this._msg,315,648,650,30,'center');
+  }
+};
+Scene_BFRatCatch.prototype.showMessage=function(t){ this._msg=t;this._msgT=170;this.refreshHud(); };
+Scene_BFRatCatch.prototype.resizeWorld=function(){
+  var sx=Graphics.boxWidth/W,sy=Graphics.boxHeight/H;
+  this._world.scale.set(sx,sy); this._world.x=0;this._world.y=0;
+  // HUD stays in screen space so it remains readable.
+  this._hudSp.scale.set(1,1); this._hudSp.x=0;this._hudSp.y=0;
+};
+Scene_BFRatCatch.prototype.mouse=function(){ return {x:TouchInput.x/(Graphics.boxWidth/W),y:TouchInput.y/(Graphics.boxHeight/H)}; };
+
+Scene_BFRatCatch.prototype.playable=function(x,y,r){
+  if(!insidePoly(x,y,this._playPoly))return false;
+  return x>=120&&x<=1270&&y>=440&&y<=712;
+};
+Scene_BFRatCatch.prototype.boxRect=function(c){ return {x:c.x-c.w/2,y:c.y-c.h,w:c.w,h:c.h}; };
+Scene_BFRatCatch.prototype.blocked=function(x,y,r,ignore){
+  for(var i=0;i<this._crates.length;i++){ var c=this._crates[i]; if(c===ignore||c.held)continue; if(circleRect(x,y,r,this.boxRect(c)))return true; }
+  return false;
+};
+Scene_BFRatCatch.prototype.crateOverlaps=function(c,x,y){
+  var cx=x,cy=y;
+  if(!this.playable(cx,cy,35))return true;
+  var rr={x:cx-c.w/2,y:cy-c.h,w:c.w,h:c.h};
+  if(dist(cx,cy,this._trap.x,this._trap.y)<115)return true;
+  for(var i=0;i<this._crates.length;i++){var q=this._crates[i];if(q===c||q.held)continue;var qr=this.boxRect(q);if(rr.x<qr.x+qr.w&&rr.x+rr.w>qr.x&&rr.y<qr.y+qr.h&&rr.y+rr.h>qr.y)return true;}
+  return false;
 };
 
-RatCatchScene.prototype.createSelection=function(){
- this._selection=new Sprite(new Bitmap(112,112));this._selection.anchor.x=.5;this._selection.anchor.y=.5;this.addChild(this._selection);
- this._arrowSprites=[];
- for(var i=0;i<4;i++){var s=new Sprite(new Bitmap(48,38));s.anchor.x=.5;s.anchor.y=.5;s._dir=i;this.addChild(s);this._arrowSprites.push(s);}
- this._selectText=new Sprite(new Bitmap(250,28));this.addChild(this._selectText);
+Scene_BFRatCatch.prototype.windLeft=function(){ return this._fanOn&&this._valveMode<0&&this._shutters[0]; };
+Scene_BFRatCatch.prototype.windRight=function(){ return this._fanOn&&this._valveMode>0&&this._shutters[1]; };
+Scene_BFRatCatch.prototype.crossDraft=function(side){
+  if(!this._fanOn||this._valveMode===0)return false;
+  var open=side===0?this._shutters[0]:this._shutters[1];
+  var active=side===0?this.windLeft():this.windRight();
+  return open&&!active;
 };
 
-RatCatchScene.prototype.drawSelection=function(){
- var s=this._selection,b=s.bitmap;b.clear();
- if(this._ended || this._rats[this._selected].caught){s.visible=false;this._selectText.visible=false;return;}
- s.visible=true;this._selectText.visible=true;
- var r=this._rats[this._selected];
- b.fillRect(8,8,17,3,'#ffd86f');b.fillRect(8,8,3,17,'#ffd86f');
- b.fillRect(87,8,17,3,'#ffd86f');b.fillRect(101,8,3,17,'#ffd86f');
- b.fillRect(8,101,17,3,'#ffd86f');b.fillRect(8,87,3,17,'#ffd86f');
- b.fillRect(87,101,17,3,'#ffd86f');b.fillRect(101,87,3,17,'#ffd86f');
- s.x=AX+r.x;s.y=AY+r.y;
- this._selectText.x=s.x-125;this._selectText.y=s.y-78;
- var tb=this._selectText.bitmap;tb.clear();tb.font='bold 14px Arial';tb.textColor='#5b3a20';tb.drawText('КРЫСА '+(this._selected+1)+' — ВЫБРАНА',0,3,250,'center');
+Scene_BFRatCatch.prototype.updateMechanisms=function(){
+  if(this._fanOn){this._fanTimer++;if(this._fanTimer%4===0)this._fanFrame=(this._fanFrame+1)%4;}else this._fanFrame=0;
+  this._fan.bitmap=img('fan_frame_'+this._fanFrame);
+  if(this._valveT<1){
+    this._valveT=Math.min(1,this._valveT+.11); this._valveAngle=this._valveFrom+(this._valveTo-this._valveFrom)*(1-(1-this._valveT)*(1-this._valveT));
+  }
+  this._valve.x=this._valveX; this._valve.y=this._valveY; this._valve.rotation=this._valveAngle;
+  for(var i=0;i<2;i++){
+    var goal=this._shutters[i]?1:0; this._shutterP[i]+=(goal-this._shutterP[i])*.20;
+    var p=this._shutterP[i],f=p<.20?0:p<.50?1:p<.80?2:3;
+    if(i===0)this._leftSh.bitmap=img('shutter_frame_'+f); else this._rightSh.bitmap=img('shutter_frame_'+f);
+  }
+  if(this._trap.busy>0){this._trap.busy--;if(this._trap.busy===0)this._trapSp.bitmap=img('mousetrap_open');}
 };
 
-RatCatchScene.prototype.drawArrow=function(s,dir,hot){
- var b=s.bitmap;b.clear();
- b.fillRect(1,1,46,36,hot?'#f1b94f':'#6c4b31'); b.fillRect(4,4,40,30,hot?'#9b5c2c':'#86613d');
- b.font='bold 25px Arial';b.textColor='#fff0c2';b.drawText(['←','→','↑','↓'][dir],0,4,48,'center');
+Scene_BFRatCatch.prototype.updateWind=function(){
+  var active=[this.windLeft(),this.windRight()];
+  for(var i=0;i<this._wind.length;i++){
+    var s=this._wind[i],on=active[s._side];
+    if(s._glow){
+      s.visible=on; if(on){s.alpha=.45+.18*Math.sin(this._frame*.08);s.scale.set(.8+.05*Math.sin(this._frame*.04));}
+      continue;
+    }
+    if(!on){s.visible=false;continue;}
+    var side=s._side,t=(s._p+this._frame*.012+(s._i%3)*.002)%1;
+    var sx=side===0?470:810,sy=220,ex=side===0?650:630,ey=495;
+    s.x=sx+(ex-sx)*t; s.y=sy+(ey-sy)*t+s._lane;
+    s.rotation=Math.atan2(ey-sy,ex-sx);
+    s.alpha=.20+.78*Math.sin(Math.PI*t);
+    s.scale.set(.55+1.15*(1-Math.abs(t-.5)),.70);
+    s.visible=true;
+  }
 };
 
-RatCatchScene.prototype.createHud=function(){
- this._title=new Sprite(new Bitmap(Graphics.boxWidth,54));var b=this._title.bitmap;
- b.font='bold 24px Arial';b.textColor='#ffe5a0';b.drawText('КРЫСЫ В ПОДВАЛЕ',38,4,350,'left');
- b.font='15px Arial';b.textColor='#e8c996';b.drawText('Выберите крысу и гоните её стрелками в ловушку',38,31,560,'left');this.addChild(this._title);
- this._timeText=new Sprite(new Bitmap(130,38));this._timeText.x=650;this._timeText.y=9;this.addChild(this._timeText);
- this._countText=new Sprite(new Bitmap(130,38));this._countText.x=775;this._countText.y=9;this.addChild(this._countText);
- this._message=new Sprite(new Bitmap(760,38));this._message.x=40;this._message.y=510;this.addChild(this._message);
+Scene_BFRatCatch.prototype.pickPoint=function(r){
+  var pts=[[190,505],[265,565],[350,500],[450,565],[555,510],[655,555],[755,500],[860,560],[960,505],[1060,560],[1170,515],[1140,640],[1010,675],[870,650],[700,670],[530,650],[360,660],[240,625]];
+  return pts[(r.goalIndex+Math.floor(this._frame/240))%pts.length];
+};
+Scene_BFRatCatch.prototype.ratTarget=function(r){
+  if(r.caught)return {x:r.x,y:r.y};
+  if(r.committed)return {x:this._trap.x,y:this._trap.y-4};
+  var toCheese=r.side===0?this.windLeft():this.windRight();
+  if(this._cheese.placed&&toCheese){
+    var lane=r.side===0?[[300,500],[400,525],[500,555],[585,575],[630,586]]:[[980,500],[900,525],[800,555],[720,575],[650,586]];
+    for(var i=0;i<lane.length;i++) if(dist(r.x,r.y,lane[i][0],lane[i][1])>35)return lane[i];
+    r.committed=true;return {x:this._trap.x,y:this._trap.y-4};
+  }
+  return this.pickPoint(r);
+};
+Scene_BFRatCatch.prototype.moveRat=function(r,dt){
+  var target=this.ratTarget(r);
+  var otherSide=this.crossDraft(r.side===0?1:0);
+  if(otherSide&&!(this._cheese.placed&&(r.side===0?this.windLeft():this.windRight()))) {
+    r.panic=Math.min(1,r.panic+.06); target=r.side===0?{x:1160,y:560}:{x:180,y:560};
+  }else r.panic=Math.max(0,r.panic-.025);
+  var dx=target.x-r.x,dy=target.y-r.y,d=Math.max(1,Math.sqrt(dx*dx+dy*dy));
+  var spd=r.panic>.15?90:r.speed; var vx=dx/d*spd,vy=dy/d*spd;
+  if(r.panic<=.15&&this._cheese.placed&&(r.side===0?this.windLeft():this.windRight())){
+    var w=r.side===0?1:-1; vx+=w*13; vy+=5;
+  }
+  // Soft rat-to-rat separation
+  for(var i=0;i<this._rats.length;i++){if(this._rats[i]===r||this._rats[i].caught)continue;var q=this._rats[i],dd=dist(r.x,r.y,q.x,q.y);if(dd<38&&dd>0){var push=(38-dd)*1.2;vx+=(r.x-q.x)/dd*push;vy+=(r.y-q.y)/dd*push;}}
+  // Crate avoidance
+  for(var c=0;c<this._crates.length;c++){var box=this._crates[c];if(box.held)continue;var bx=box.x,by=box.y-box.h/2,dd2=dist(r.x,r.y,bx,by);if(dd2<70&&dd2>0){var pu=(70-dd2)*1.0;vx+=(r.x-bx)/dd2*pu;vy+=(r.y-by)/dd2*pu;}}
+  var nx=r.x+vx*dt,ny=r.y+vy*dt;
+  var ok=this.playable(nx,ny,16)&&!this.blocked(nx,ny,16,null);
+  if(ok){r.x=nx;r.y=ny;}else{
+    var ox=this.playable(nx,r.y,16)&&!this.blocked(nx,r.y,16,null);var oy=this.playable(r.x,ny,16)&&!this.blocked(r.x,ny,16,null);
+    if(ox)r.x=nx;else vx*=-.3; if(oy)r.y=ny;else vy*=-.3;
+    if(!ox&&!oy)r.goalIndex=(r.goalIndex+3)%18;
+  }
+  r.angle=Math.atan2(vy,vx);
+};
+Scene_BFRatCatch.prototype.updateRats=function(){
+  for(var i=0;i<this._rats.length;i++){
+    var r=this._rats[i]; if(r.caught)continue; this.moveRat(r,1/60);
+    r.sprite.x=r.x;r.sprite.y=r.y; r.shadow.x=r.x;r.shadow.y=r.y+7;
+    var base=Math.abs(r.sprite.scale.x)||.84; r.sprite.scale.x=r.angle>Math.PI/2||r.angle< -Math.PI/2?-base:base;
+    r.sprite.y=r.y+Math.sin(this._frame*.16+r.seed)*1.5;
+    r.sprite.rotation=Math.sin(this._frame*.08+r.seed)*.025;
+    if(this._trap.busy<=0&&dist(r.x,r.y,this._trap.x,this._trap.y)<62)this.captureRat(r);
+  }
 };
 
-RatCatchScene.prototype.setMessage=function(text){var b=this._message.bitmap;b.clear();b.font='bold 17px Arial';b.textColor='#ffe6ad';b.drawText(text,0,4,760,'center');};
-
-RatCatchScene.prototype.findNext=function(){
- for(var i=0;i<6;i++)if(!this._rats[i].caught)return i;
- return -1;
+Scene_BFRatCatch.prototype.captureRat=function(r){
+  if(r.caught)return; r.caught=true; this._caught++; r.sprite.visible=false;r.shadow.visible=false;
+  this._trap.busy=28; this._trapSp.bitmap=img('mousetrap_closed'); seOk();
+  if(this._caught<TOTAL)this.showMessage('Щёлк! Крыса поймана.');
+  else{this.showMessage('Все крысы пойманы. Заберите фишку.');this._token.visible=true;}
 };
 
-RatCatchScene.prototype.update=function(){
- Scene_Base.prototype.update.call(this);
- if(this._ended){if(Input.isTriggered('ok')||TouchInput.isTriggered()){if(this._won)SceneManager.pop();else this.restartAttempt();}return;}
- this._time--; if(this._time<=0){this.finish(false,'Время вышло. Enter / тап — новая попытка.');return;}
- this.updateRats();this.updateControls();this.refreshAll();
- if(this._caught>=6)this.finish(true,'Все 6 крыс пойманы! Квест засчитан.');
+Scene_BFRatCatch.prototype.hit=function(p){
+  if(this._caught===TOTAL&&this._token.visible&&pointerHit(p.x,p.y,this._token.x,this._token.y,46))return{type:'token'};
+  if(!this._cheese.placed&&pointerHit(p.x,p.y,this._cheese.x,this._cheese.y-25,45))return{type:'cheese'};
+  for(var i=this._crates.length-1;i>=0;i--){var c=this._crates[i];if(!c.held&&pointerHit(p.x,p.y,c.x,c.y-c.h/2,48))return{type:'crate',obj:c};}
+  if(pointerHit(p.x,p.y,this._valveX,this._valveY,60))return{type:'valve'};
+  if(pointerHit(p.x,p.y,640,205,70))return{type:'fan'};
+  if(p.x>395&&p.x<545&&p.y>150&&p.y<280)return{type:'shutter',i:0};
+  if(p.x>735&&p.x<885&&p.y>150&&p.y<280)return{type:'shutter',i:1};
+  return null;
+};
+Scene_BFRatCatch.prototype.beginDrag=function(type,obj,p){this._drag={type:type,obj:obj,dx:p.x-obj.x,dy:p.y-obj.y};obj.held=true;};
+Scene_BFRatCatch.prototype.drag=function(){
+  if(!this._drag)return;var p=this.mouse(),o=this._drag.obj;o.x=clamp(p.x-this._drag.dx,150,1210);o.y=clamp(p.y-this._drag.dy,445,700);o.sprite.x=o.x;o.sprite.y=o.y;
+  if(o.shadow){o.shadow.x=o.x;o.shadow.y=o.y+8;}
+};
+Scene_BFRatCatch.prototype.dropDrag=function(){
+  if(!this._drag)return;this.drag();var d=this._drag,o=d.obj;
+  if(d.type==='cheese'){
+    if(dist(o.x,o.y,this._trap.x,this._trap.y-10)<78){o.x=this._trap.x;o.y=this._trap.y-13;this._cheese.placed=true;this.showMessage('Сыр установлен в крысоловку.');seOk();}
+    else{o.x=o.homeX;o.y=o.homeY;this.showMessage('Сыр нужно положить в крысоловку.');seBuzzer();}
+  }else if(d.type==='crate'){
+    if(this.crateOverlaps(o,o.x,o.y)){o.x=o.homeX;o.y=o.homeY;this.showMessage('Здесь ящик мешает проходу.');seBuzzer();}
+    else{seOk();}
+  }
+  o.held=false;o.sprite.x=o.x;o.sprite.y=o.y;if(o.shadow){o.shadow.x=o.x;o.shadow.y=o.y+8;}this._drag=null;
 };
 
-RatCatchScene.prototype.updateRats=function(){
- for(var k=0;k<this._rats.length;k++){
-  var r=this._rats[k]; if(r.caught)continue;
-  if(r.panic>0)r.panic--;
-  if(Math.random()<.008){var a=Math.random()*Math.PI*2;r.vx+=Math.cos(a)*.08;r.vy+=Math.sin(a)*.08;}
-  var sp=Math.sqrt(r.vx*r.vx+r.vy*r.vy),max=r.panic>0?3.15:1.35;
-  if(sp>max){r.vx*=max/sp;r.vy*=max/sp;} if(sp<.35){r.vx*=1.05;r.vy*=1.05;}
-  var nx=r.x+r.vx,ny=r.y+r.vy;
-  if(nx<27||nx>AW-27){r.vx*=-1;nx=Math.max(27,Math.min(AW-27,nx));}
-  if(ny<27||ny>AH-27){r.vy*=-1;ny=Math.max(27,Math.min(AH-27,ny));}
-  for(var i=0;i<this._walls.length;i++){var w=this._walls[i];if(this.circleRect(nx,ny,r.r,w)){
-   if(!this.circleRect(r.x,ny,r.r,w))r.vy*=-1;else if(!this.circleRect(nx,r.y,r.r,w))r.vx*=-1;else{r.vx*=-1;r.vy*=-1;}
-   nx=r.x+r.vx;ny=r.y+r.vy;
-  }}
-  r.x=nx;r.y=ny;
- }
+Scene_BFRatCatch.prototype.turnValve=function(){
+  var next=this._valveMode===-1?0:this._valveMode===0?1:-1;
+  this._valveMode=next;this._valveFrom=this._valveAngle;
+  this._valveTo=next<0?-Math.PI/2:next>0?Math.PI/2:0;this._valveT=0;
+  this.showMessage(next<0?'Вентиль: влево.':next>0?'Вентиль: вправо.':'Вентиль перекрыт.');
+};
+Scene_BFRatCatch.prototype.toggleFan=function(){this._fanOn=!this._fanOn;this.showMessage(this._fanOn?'Вентилятор запущен.':'Вентилятор остановлен.');seOk();};
+Scene_BFRatCatch.prototype.toggleShutter=function(i){this._shutters[i]=!this._shutters[i];this.showMessage(i===0?(this._shutters[0]?'Левая решётка открывается.':'Левая решётка закрывается.'):(this._shutters[1]?'Правая решётка открывается.':'Правая решётка закрывается.'));seOk();};
+Scene_BFRatCatch.prototype.takeToken=function(){
+  if(this._tokenTaken)return;
+
+  this._tokenTaken=true;
+  this._token.visible=false;
+
+  // Успешное завершение мини-приложения.
+  // BF_QuestSystem переводит текущий выбранный квест на следующий шаг.
+  $gameVariables.setValue(RESULT_VAR,1);
+  if(window.BF_QuestSystem && typeof window.BF_QuestSystem.minigameResult==='function'){
+    window.BF_QuestSystem.minigameResult('SUCCESS');
+  }
+
+  // Старое поведение запускающего события сохраняется.
+  if(origin.mapId&&origin.eventId){
+    $gameSelfSwitches.setValue([origin.mapId,origin.eventId,'A'],true);
+  }
+  this._done=true;
+  seOk();
+  SceneManager.pop();
+};
+Scene_BFRatCatch.prototype.createToken=function(){
+  this._token=this.sp('token',1035,635,.60,.5,.5,this._fxLayer);this._token.visible=false;
+};
+Scene_BFRatCatch.prototype.resetPuzzle=function(){
+  this._caught=0;this._tokenTaken=false;this._done=false;this._fanOn=false;this._fanFrame=0;this._fanTimer=0;this._valveMode=0;this._valveAngle=0;this._valveFrom=0;this._valveTo=0;this._valveT=1;this._shutters=[false,false];this._shutterP=[0,0];this._trap.busy=0;this._trapSp.bitmap=img('mousetrap_open');this._token.visible=false;
+  this._cheese.x=this._cheese.homeX;this._cheese.y=this._cheese.homeY;this._cheese.placed=false;this._cheese.held=false;this._cheese.sprite.x=this._cheese.x;this._cheese.sprite.y=this._cheese.y;
+  for(var i=0;i<this._crates.length;i++){var c=this._crates[i];c.x=c.homeX;c.y=c.homeY;c.held=false;c.sprite.visible=true;c.sprite.x=c.x;c.sprite.y=c.y;c.shadow.x=c.x;c.shadow.y=c.y+8;}
+  for(var j=0;j<this._rats.length;j++){var r=this._rats[j];r.x=r.homeX;r.y=r.homeY;r.caught=false;r.committed=false;r.panic=0;r.sprite.visible=true;r.shadow.visible=true;r.sprite.x=r.x;r.sprite.y=r.y;r.goalIndex=j;r.vx=0;r.vy=0;}
+  this.showMessage('Головоломка сброшена.');
 };
 
-RatCatchScene.prototype.updateControls=function(){
- var dir=null;
- if(Input.isTriggered('left')||Input.isTriggered('a'))dir=0;if(Input.isTriggered('right')||Input.isTriggered('d'))dir=1;
- if(Input.isTriggered('up')||Input.isTriggered('w'))dir=2;if(Input.isTriggered('down')||Input.isTriggered('s'))dir=3;
- if(TouchInput.isTriggered()){
-  var px=TouchInput.x,py=TouchInput.y;
-  /* Select an uncaught rat by clicking its body. */
-  for(var i=0;i<6;i++){var rr=this._rats[i];if(rr.caught)continue;var dx=px-(AX+rr.x),dy=py-(AY+rr.y);if(dx*dx+dy*dy<36*36){this._selected=i;this.setMessage('Крыса '+(i+1)+' выбрана. Нажимайте стрелки вокруг неё.');return;}}
-  /* Arrow hitboxes are outside the rat sprite. */
-  for(var j=0;j<4;j++){var s=this._arrowSprites[j];if(!s.visible)continue;if(px>=s.x-24&&px<=s.x+24&&py>=s.y-19&&py<=s.y+19){dir=j;break;}}
- }
- if(dir!==null&&Graphics.frameCount-this._lastHit>=9)this.broomHit(dir);
+Scene_BFRatCatch.prototype.updateInput=function(){
+  if(Input.isTriggered('escape')){SceneManager.pop();return;}
+  if(Input.isTriggered('r')){this.resetPuzzle();return;}
+  if(Input.isTriggered('s')){this.showMessage('Сыр → крысоловка. Вентилятор → вентиль → решётка.');return;}
+  if(this._drag){if(TouchInput.isReleased())this.dropDrag();else this.drag();return;}
+  if(!TouchInput.isTriggered())return;
+  var p=this.mouse(),h=this.hit(p);if(!h)return;
+  if(h.type==='token'){this.takeToken();return;}
+  if(h.type==='cheese'){this.beginDrag('cheese',this._cheese,p);return;}
+  if(h.type==='crate'){this.beginDrag('crate',h.obj,p);return;}
+  if(h.type==='fan'){this.toggleFan();return;}
+  if(h.type==='valve'){this.turnValve();return;}
+  if(h.type==='shutter'){this.toggleShutter(h.i);return;}
 };
 
-RatCatchScene.prototype.broomHit=function(dir){
- this._lastHit=Graphics.frameCount;this._broomDir=dir;this._broomTimer=10;
- var r=this._rats[this._selected]; if(!r||r.caught)return;
- /* Classic broom mechanic: hit from a side, rat runs AWAY from that side.
-    Thus pressing LEFT pushes the rat to the RIGHT, etc. */
- if(dir===0)r.vx+=2.25;if(dir===1)r.vx-=2.25;if(dir===2)r.vy+=2.25;if(dir===3)r.vy-=2.25;
- r.panic=12;this._hits++;
- this.setMessage('ВЗМАХ ВЕНИКОМ — '+['влево','вправо','вверх','вниз'][dir]+'!');
+Scene_BFRatCatch.prototype.update=function(){
+  Scene_Base.prototype.update.call(this);this._frame++;this.resizeWorld();
+  this.updateMechanisms();this.updateWind();this.updateRats();this.updateInput();
+  if(this._msgT>0){this._msgT--;if(this._msgT%4===0)this.refreshHud();}
 };
 
-RatCatchScene.prototype.refreshAll=function(){
- for(var i=0;i<6;i++){this.drawRat(i);var r=this._rats[i],s=this._ratSprites[i];if(!r.caught){s.x=AX+r.x;s.y=AY+r.y;}}
- this.drawSelection();
- var r=this._rats[this._selected],cx=AX+r.x,cy=AY+r.y;
- var pos=[[cx-62,cy],[cx+62,cy],[cx,cy-62],[cx,cy+62]];
- for(var j=0;j<4;j++){
-  var ar=this._arrowSprites[j];
-  ar.visible=!this._ended&&!r.caught;
-  ar.x=pos[j][0];ar.y=pos[j][1];this.drawArrow(ar,j,(this._broomTimer>0&&this._broomDir===j));
- }
- if(this._broomTimer>0)this._broomTimer--;
- var tb=this._timeText.bitmap;tb.clear();tb.font='bold 17px Arial';tb.textColor='#ffe7a3';tb.drawText('ВРЕМЯ '+Math.ceil(this._time/60),0,3,130,'center');
- var cb=this._countText.bitmap;cb.clear();cb.font='bold 17px Arial';cb.textColor='#f1d4a1';cb.drawText('ПОЙМАНО '+this._caught+'/6',0,3,130,'center');
-};
+// Patch create() to create token after layers are ready.
+var _create=Scene_BFRatCatch.prototype.create;
+Scene_BFRatCatch.prototype.create=function(){_create.call(this);this.createToken();this._token.visible=false;};
 
-RatCatchScene.prototype.tryCatch=function(){
- var r=this._rats[this._selected],t=this._trap;
- if(r.caught)return false;
- if(r.x>t.x+12&&r.x<t.x+t.w-12&&r.y>t.y+12&&r.y<t.y+t.h-12){
-  r.caught=true;this._caught++;this._hits=0;this._broomTimer=0;
-  this._ratSprites[this._selected].visible=false;
-  var next=this.findNext();
-  if(next>=0){this._selected=next;this.setMessage('Крыса поймана! Теперь гоним крысу '+(next+1)+' из оставшихся.');}
-  else this.setMessage('Все крысы пойманы!');
-  return true;
- }
- return false;
-};
-
-/* Check after each movement/input so a rat can be caught immediately on entering the trap. */
-var _oldUpdateRat=RatCatchScene.prototype.updateRats;
-RatCatchScene.prototype.updateRats=function(){
- _oldUpdateRat.call(this);
- this.tryCatch();
-};
-
-RatCatchScene.prototype.circleRect=function(cx,cy,r,rect){var px=Math.max(rect.x,Math.min(cx,rect.x+rect.w)),py=Math.max(rect.y,Math.min(cy,rect.y+rect.h));var dx=cx-px,dy=cy-py;return dx*dx+dy*dy<r*r;};
-
-RatCatchScene.prototype.finish=function(win,msg){
- if(this._ended)return;
- this._ended=true;this._won=!!win;
- this.setMessage(msg);
- var s=new Sprite(new Bitmap(640,160));s.x=80;s.y=205;
- var b=s.bitmap;
- b.fillAll('#21160f');
- b.fillRect(4,4,632,152,'#ead2a4');
- b.fillRect(8,8,624,144,'#fff0c8');
- b.fontFace='Arial';
- b.fontSize=30;
- b.textColor='#3a2619';
- b.drawText(win?'ВСЕ 6 КРЫС ПОЙМАНЫ!':'КРЫСЫ УБЕЖАЛИ',20,18,600,38,'center');
- b.fontSize=20;
- b.textColor='#5b3a20';
- b.drawText(win?'Квест засчитан!':'Попытка не засчитана.',20,62,600,30,'center');
- b.fontSize=17;
- b.textColor='#70482c';
- b.drawText(win?'Нажмите Enter или коснитесь экрана':'Нажмите Enter или коснитесь экрана, чтобы начать заново',20,102,600,30,'center');
- this.addChild(s);this._endOverlay=s;
- if(win)this.completeQuest();
-};
-
-RatCatchScene.prototype.completeQuest=function(){
- var old=Number($gameVariables.value(11))||0;$gameVariables.setValue(11,old+1);
- var id=this._eventId||0;if(!id&&$gameMap&&$gameMap._interpreter)id=$gameMap._interpreter._eventId||0;
- if(id>0)$gameSelfSwitches.setValue([$gameMap.mapId(),id,'A'],true);
-};
-
-RatCatchScene.prototype.restartAttempt=function(){
- if(this._endOverlay){this.removeChild(this._endOverlay);this._endOverlay=null;}
- this._time=GAME_TIME;this._hits=0;this._lastHit=-999;this._ended=false;this._won=false;this._selected=0;this._broomTimer=0;this._caught=0;this.resetRats();
- this.setMessage('Выберите крысу. Стрелки вокруг неё показывают направление удара. Нужно поймать все 6.');this.refreshAll();
-};
-
-var _BF_RatCatch_cmd=Game_Interpreter.prototype.pluginCommand;
+var oldPC=Game_Interpreter.prototype.pluginCommand;
 Game_Interpreter.prototype.pluginCommand=function(command,args){
- _BF_RatCatch_cmd.call(this,command,args);
- if(String(command).toUpperCase()==='RATCATCH'&&args&&String(args[0]).toLowerCase()==='start'){
-  $gameTemp._ratCatchEventId=this._eventId;
-  SceneManager.push(RatCatchScene);
- }
+  oldPC.call(this,command,args);
+  var c=String(command||'').toUpperCase();var a=(args||[]).map(function(v){return String(v||'').toLowerCase();});
+  if(c==='BF_RATCATCH'&&(!a.length||a[0]==='start')){
+    origin={mapId:this._mapId||$gameMap.mapId(),eventId:this._eventId||0};
+    if(window.BF_QuestSystem && typeof window.BF_QuestSystem.minigameStart==='function'){
+      window.BF_QuestSystem.minigameStart('BF_RatCatch');
+    }
+    this.setWaitMode(WAIT); SceneManager.push(Scene_BFRatCatch);
+  }
 };
+var oldWait=Game_Interpreter.prototype.updateWaitMode;
+Game_Interpreter.prototype.updateWaitMode=function(){if(this._waitMode===WAIT)return SceneManager._scene instanceof Scene_BFRatCatch;return oldWait.call(this);};
+window.BF_RatCatch_Start=function(){origin={mapId:$gameMap.mapId(),eventId:0};SceneManager.push(Scene_BFRatCatch);};
+
 })();

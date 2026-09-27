@@ -1,296 +1,109 @@
 /*:
- * @plugindesc BitzFantasy — Мини-игра жидкого азота. RPG Maker MV.
+ * @plugindesc BitzFantasy — Nitrogen V6. Реальная мини-игра с ручным вентилем, инерцией, риском и таймингами.
  * @help
- * Файлы:
- *   img/pictures/NitrogenMini/nitrogen_background.png
- *   img/system/NitrogenMini/nitro_tank.png
- *   img/system/NitrogenMini/valve.png
- *   img/system/NitrogenMini/gauge.png
- *   img/system/NitrogenMini/canister.png
- *   img/system/NitrogenMini/steam.png
- *   img/system/NitrogenMini/success.png
- *   img/system/NitrogenMini/fail.png
- *
- * Запуск:
- *   Plugin Command: Nitrogen start
- *
- * По умолчанию используется переменная 12 (азот).
- * После успеха: переменная 12 увеличивается на 1.
- * Также включается Self Switch A события, из которого запущена мини-игра.
- *
- * Enter не нужен. Управление мышью/сенсором.
+ * Plugin Command: Nitrogen start
+ * Успех: Variable 12 +1, Self Switch A ON.
+ * Мышь/сенсор. Игрок не нажимает готовые кнопки: он вращает вентиль и управляет процессом.
  */
+(function(){
+'use strict';
+var BF={mapId:0,eventId:0};
+var _pc=Game_Interpreter.prototype.pluginCommand;
+Game_Interpreter.prototype.pluginCommand=function(command,args){
+ _pc.call(this,command,args);
+ if(String(command).toLowerCase()==='nitrogen' && String(args&&args[0]).toLowerCase()==='start'){
+   BF.mapId=this._mapId; BF.eventId=this._eventId; SceneManager.push(Scene_NitrogenV6);
+ }
+};
 
-(function() {
-    "use strict";
-
-    var Nitrogen = { mapId: 0, eventId: 0 };
-
-    var _pc = Game_Interpreter.prototype.pluginCommand;
-    Game_Interpreter.prototype.pluginCommand = function(command, args) {
-        _pc.call(this, command, args);
-        if (String(command).toLowerCase() !== "nitrogen") return;
-        var sub = args && args.length ? String(args[0]).toLowerCase() : "";
-        if (sub === "start") {
-            Nitrogen.mapId = $gameMap.mapId();
-            Nitrogen.eventId = this._eventId;
-            SceneManager.push(Scene_NitrogenMini);
-        }
-    };
-
-
-    function drawOutline(bitmap, x, y, w, h, color, thickness) {
-        thickness = thickness || 2;
-        bitmap.fillRect(x, y, w, thickness, color);
-        bitmap.fillRect(x, y + h - thickness, w, thickness, color);
-        bitmap.fillRect(x, y, thickness, h, color);
-        bitmap.fillRect(x + w - thickness, y, thickness, h, color);
-    }
-
-    function Scene_NitrogenMini() { this.initialize.apply(this, arguments); }
-    Scene_NitrogenMini.prototype = Object.create(Scene_Base.prototype);
-    Scene_NitrogenMini.prototype.constructor = Scene_NitrogenMini;
-
-    Scene_NitrogenMini.prototype.initialize = function() {
-        Scene_Base.prototype.initialize.call(this);
-        this._step = 0;
-        this._sequence = [];
-        this._progress = 0;
-        this._mistake = 0;
-        this._timer = 0;
-        this._messageTimer = 0;
-        this._flash = 0;
-        this._locked = false;
-    };
-
-    Scene_NitrogenMini.prototype.create = function() {
-        Scene_Base.prototype.create.call(this);
-        this.createBackground();
-        this.createTitle();
-        this.createTank();
-        this.createControls();
-        this.createStatus();
-        this.startSequence();
-    };
-
-    Scene_NitrogenMini.prototype.createBackground = function() {
-        var bmp = ImageManager.loadPicture("NitrogenMini/nitrogen_background");
-        this._bg = new Sprite(bmp);
-        this._bg.scale.x = Graphics.boxWidth / 816;
-        this._bg.scale.y = Graphics.boxHeight / 624;
-        this.addChild(this._bg);
-    };
-
-    Scene_NitrogenMini.prototype.createTitle = function() {
-        var b = new Bitmap(Graphics.boxWidth, 70);
-        b.fillRect(0,0,Graphics.boxWidth,70,"rgba(0,0,0,0.72)");
-        b.fontSize = 30;
-        b.textColor = "#d9f4ff";
-        b.drawText("ДОБЫЧА ЖИДКОГО АЗОТА",0,8,Graphics.boxWidth,36,"center");
-        b.fontSize = 17;
-        b.textColor = "#ffffff";
-        b.drawText("Выполни действия в правильной последовательности",0,43,Graphics.boxWidth,25,"center");
-        this.addChild(new Sprite(b));
-    };
-
-    Scene_NitrogenMini.prototype.createTank = function() {
-        var s = new Sprite(ImageManager.loadSystem("NitrogenMini/nitro_tank"));
-        s.x = 250; s.y = 205; s.scale.x = 1.15; s.scale.y = 1.15;
-        this._tank = s;
-        this.addChild(s);
-
-        var steam = new Sprite(ImageManager.loadSystem("NitrogenMini/steam"));
-        steam.x = 280; steam.y = 120; steam.opacity = 150;
-        this._steam = steam;
-        this.addChild(steam);
-    };
-
-    Scene_NitrogenMini.prototype.createControls = function() {
-        this._buttons = [];
-        var names = ["ВЕНТИЛЬ","ДАВЛЕНИЕ","ЗАБОР АЗОТА"];
-        var files = ["valve","gauge","canister"];
-        var xs = [90, 330, 570];
-
-        for (var i=0;i<3;i++) {
-            var spr = new Sprite(ImageManager.loadSystem("NitrogenMini/" + files[i]));
-            spr.anchor.x = 0.5; spr.anchor.y = 0.5;
-            spr.x = xs[i]; spr.y = 385;
-            spr.scale.x = 0.72; spr.scale.y = 0.72;
-            spr._nitrogenIndex = i;
-            this.addChild(spr);
-
-            var panel = new Sprite(new Bitmap(200,58));
-            panel.x = xs[i]-100; panel.y = 445;
-            panel._nitrogenIndex = i;
-            panel.bitmap.fillRect(3,3,194,52,"rgba(4,18,35,0.92)");
-            drawOutline(panel.bitmap, 3, 3, 194, 52, "#59bfff", 2);
-            panel.bitmap.fontSize = 20;
-            panel.bitmap.textColor = "#ffffff";
-            panel.bitmap.drawText(names[i],0,14,200,28,"center");
-            this.addChild(panel);
-
-            this._buttons.push(spr);
-            this._buttons.push(panel);
-        }
-    };
-
-    Scene_NitrogenMini.prototype.createStatus = function() {
-        this._status = new Sprite(new Bitmap(Graphics.boxWidth, 110));
-        this._status.y = 505;
-        this.addChild(this._status);
-        this._hint = new Sprite(new Bitmap(Graphics.boxWidth, 50));
-        this._hint.y = 120;
-        this.addChild(this._hint);
-        this.updateStatus("Подготовьте контейнер.");
-    };
-
-    Scene_NitrogenMini.prototype.startSequence = function() {
-        var a = [0,1,2];
-        for (var i=a.length-1;i>0;i--) {
-            var j=Math.floor(Math.random()*(i+1)), t=a[i]; a[i]=a[j]; a[j]=t;
-        }
-        this._sequence = a;
-        this._progress = 0;
-        this._mistake = 0;
-        this.updateStatus(this.actionText());
-    };
-
-    Scene_NitrogenMini.prototype.actionText = function() {
-        var idx = this._sequence[this._progress];
-        if (idx === 0) return "Шаг 1: откройте вентиль.";
-        if (idx === 1) return "Шаг 2: стабилизируйте давление.";
-        return "Шаг 3: заберите азот.";
-    };
-
-    Scene_NitrogenMini.prototype.updateStatus = function(text) {
-        this._status.bitmap.clear();
-        this._status.bitmap.fillRect(70,0,Graphics.boxWidth-140,96,"rgba(3,13,25,0.88)");
-        drawOutline(this._status.bitmap, 70, 0, Graphics.boxWidth-140, 96, "#4db9ff", 2);
-        this._status.bitmap.fontSize = 25;
-        this._status.bitmap.textColor = "#e8f7ff";
-        this._status.bitmap.drawText(text,80,12,Graphics.boxWidth-160,36,"center");
-        this._status.bitmap.fontSize = 19;
-        this._status.bitmap.textColor = "#f4d36b";
-        this._status.bitmap.drawText("Прогресс: "+this._progress+" / 3",80,50,Graphics.boxWidth-160,28,"center");
-    };
-
-    Scene_NitrogenMini.prototype.update = function() {
-        Scene_Base.prototype.update.call(this);
-        if (this._locked) return;
-
-        this._timer++;
-        if (this._flash>0) this._flash--;
-
-        this.updateSteam();
-        this.updateTouch();
-
-        if (this._messageTimer>0) {
-            this._messageTimer--;
-            if (this._messageTimer===0) this._hint.bitmap.clear();
-        }
-
-        if (this._timer>2700) this.failRound();
-    };
-
-    Scene_NitrogenMini.prototype.updateSteam = function() {
-        if (!this._steam) return;
-        this._steam.opacity = 125 + Math.sin(Graphics.frameCount/10)*35;
-        this._steam.x = 280 + Math.sin(Graphics.frameCount/20)*5;
-    };
-
-    Scene_NitrogenMini.prototype.updateTouch = function() {
-        if (!TouchInput.isTriggered()) return;
-
-        var x=TouchInput.x, y=TouchInput.y;
-        var idx=this.hitButton(x,y);
-
-        if (idx<0) return;
-
-        var need=this._sequence[this._progress];
-        if (idx===need) {
-            this._progress++;
-            this.pulseButton(idx);
-            if (this._progress>=3) {
-                this.successRound();
-            } else {
-                this.updateStatus(this.actionText());
-                this.showHint("Верно!");
-            }
-        } else {
-            this._mistake++;
-            this._flash=18;
-            this.showHint("Ошибка! Действие не по порядку.");
-            this.shakeTank();
-        }
-    };
-
-    Scene_NitrogenMini.prototype.hitButton = function(x,y) {
-        for (var i=0;i<3;i++) {
-            var b=this._buttons[i*2];
-            if (!b) continue;
-            var dx=x-b.x, dy=y-b.y;
-            if (dx*dx+dy*dy <= 80*80) return i;
-        }
-        for (var k=0;k<3;k++) {
-            var p=this._buttons[k*2+1];
-            if (!p) continue;
-            if (x>=p.x && x<=p.x+200 && y>=p.y && y<=p.y+58) return k;
-        }
-        return -1;
-    };
-
-    Scene_NitrogenMini.prototype.pulseButton = function(idx) {
-        var b=this._buttons[idx*2];
-        if (!b) return;
-        b.scale.x=0.86; b.scale.y=0.86;
-        setTimeout(function(){ if (b) { b.scale.x=0.72; b.scale.y=0.72; } },120);
-    };
-
-    Scene_NitrogenMini.prototype.shakeTank = function() {
-        var baseX=250, tank=this._tank, n=0;
-        var id=setInterval(function(){
-            if (!tank) { clearInterval(id); return; }
-            tank.x=baseX+(n%2===0?8:-8); n++;
-            if(n>7){tank.x=baseX;clearInterval(id);}
-        },30);
-    };
-
-    Scene_NitrogenMini.prototype.showHint = function(text) {
-        this._messageTimer=45;
-        this._hint.bitmap.clear();
-        this._hint.bitmap.fontSize=23;
-        this._hint.bitmap.textColor="#ffffff";
-        this._hint.bitmap.drawText(text,0,0,Graphics.boxWidth,42,"center");
-    };
-
-    Scene_NitrogenMini.prototype.successRound = function() {
-        this._locked=true;
-        var v=Number($gameVariables.value(12)||0)+1;
-        $gameVariables.setValue(12,v);
-
-        if (Nitrogen.mapId===$gameMap.mapId() && Nitrogen.eventId>0) {
-            $gameSelfSwitches.setValue([$gameMap.mapId(),Nitrogen.eventId,"A"],true);
-        }
-
-        this._status.bitmap.clear();
-        this._status.bitmap.fillRect(70,0,Graphics.boxWidth-140,96,"rgba(10,50,20,0.94)");
-        drawOutline(this._status.bitmap, 70, 0, Graphics.boxWidth-140, 96, "#70e27c", 2);
-        this._status.bitmap.fontSize=30;
-        this._status.bitmap.textColor="#9cff9c";
-        this._status.bitmap.drawText("АЗОТ УСПЕШНО ИЗВЛЕЧЁН!",80,12,Graphics.boxWidth-160,40,"center");
-        this._status.bitmap.fontSize=19;
-        this._status.bitmap.textColor="#ffffff";
-        this._status.bitmap.drawText("Контейнер готов к транспортировке.",80,52,Graphics.boxWidth-160,28,"center");
-
-        setTimeout(function(){ SceneManager.pop(); },1000);
-    };
-
-    Scene_NitrogenMini.prototype.failRound = function() {
-        this._timer=0;
-        this._mistake=0;
-        this.showHint("Давление нестабильно! Попробуйте ещё раз.");
-        this.startSequence();
-    };
-
-    window.Scene_NitrogenMini=Scene_NitrogenMini;
+function Scene_NitrogenV6(){this.initialize.apply(this,arguments)}
+Scene_NitrogenV6.prototype=Object.create(Scene_Base.prototype);
+Scene_NitrogenV6.prototype.constructor=Scene_NitrogenV6;
+Scene_NitrogenV6.prototype.initialize=function(){
+ Scene_Base.prototype.initialize.call(this); this._mx=0;this._my=0;this._drag=false;this._lastA=0;
+ this._pressure=18;this._temp=-92;this._fill=0;this._valve=0;this._stability=100;this._time=90;
+ this._fault=null;this._faultT=0;this._message='Поверни вентиль и держи давление в зелёной зоне';this._won=false;this._lost=false;this._started=false;
+};
+Scene_NitrogenV6.prototype.create=function(){Scene_Base.prototype.create.call(this);this.createWindowLayer();this.createHud();this._started=true;};
+Scene_NitrogenV6.prototype.createHud=function(){
+ this._g=new Sprite(new Bitmap(Graphics.boxWidth,Graphics.boxHeight));this.addChild(this._g);this.redraw();
+};
+Scene_NitrogenV6.prototype.redraw=function(){
+ var b=this._g.bitmap,w=Graphics.boxWidth,h=Graphics.boxHeight;b.clear();
+ b.fillRect(0,0,w,h,'#111820');b.fillRect(0,0,w,82,'#18232d');
+ b.textColor='#eaf6ff';b.fontSize=28;b.drawText('ЖИДКИЙ АЗОТ — РУЧНОЕ УПРАВЛЕНИЕ',24,15,700,36,'left');
+ b.fontSize=18;b.textColor='#9fb2c2';b.drawText('Не угадывай кнопку — управляй установкой.',24,48,700,25,'left');
+ // tank
+ b.fillRect(70,150,190,400,'#263640');b.fillRect(90,170,150,360,'#0b1115');
+ var fh=350*this._fill/100;b.fillRect(92,528-fh,146,fh,'#86d9ef');
+ b.strokeRect(70,150,190,400,'#78909c');b.fontSize=20;b.textColor='#fff';b.drawText('БАЛЛОН',92,565,150,28,'center');b.drawText(Math.floor(this._fill)+' %',92,300,146,30,'center');
+ // pressure gauge
+ b.fillRect(330,145,330,85,'#202d36');b.fontSize=18;b.textColor='#fff';b.drawText('ДАВЛЕНИЕ',350,157,150,25,'left');
+ var px=350,py=198,pw=285;b.fillRect(px,py,pw,12,'#394a55');b.fillRect(px+pw*.45,py,pw*.25,12,'#62b36b');var knob=Math.max(0,Math.min(1,this._pressure/100));b.fillRect(px,py,pw*knob,12,'#d8edf5');b.fontSize=22;b.drawText(this._pressure.toFixed(1)+' bar',500,155,140,30,'right');
+ // temp
+ b.fillRect(330,250,330,85,'#202d36');b.fontSize=18;b.drawText('ТЕМПЕРАТУРА',350,262,170,25,'left');b.fontSize=22;b.drawText(this._temp.toFixed(0)+' °C',500,260,140,30,'right');
+ var tc=Math.max(0,Math.min(1,(-this._temp-80)/110));b.fillRect(350,303,285,12,'#394a55');b.fillRect(350,303,285*tc,12,'#82cde1');
+ // valve
+ var vx=500,vy=455,r=76;b.fillCircle(vx,vy,r,'#344955');b.strokeCircle(vx,vy,r,'#a9c3d0');
+ var ang=-Math.PI*.75 + this._valve*Math.PI*1.5;b.fillRect(vx-7,vy-64,14,64,'#e1edf2');b.rotation=0; // draw rotated handle via polygon
+ var x2=vx+Math.cos(ang)*58,y2=vy+Math.sin(ang)*58;b.fillCircle(vx,vy,11,'#d7e7ed');b.fillCircle(x2,y2,16,'#d7e7ed');
+ b.fontSize=18;b.textColor='#fff';b.drawText('ВЕНТИЛЬ',425,555,150,26,'center');b.textColor='#a8bac6';b.drawText('тяни мышью по кругу',390,580,220,24,'center');
+ // status
+ b.fillRect(710,145,Graphics.boxWidth-750,385,'#202d36');b.fontSize=20;b.textColor='#fff';b.drawText('СОСТОЯНИЕ',735,160,260,28,'left');
+ b.fontSize=18;b.textColor=this._pressure>=45&&this._pressure<=72?'#8fe09a':'#ff9b7d';b.drawText('Давление: '+(this._pressure>=45&&this._pressure<=72?'НОРМА':'ОПАСНО'),735,205,300,26,'left');
+ b.textColor=this._temp<=-150?'#8fe09a':'#ffcc76';b.drawText('Охлаждение: '+(this._temp<=-150?'ГОТОВО':'ИДЁТ'),735,245,300,26,'left');
+ b.textColor=this._stability>60?'#8fe09a':this._stability>25?'#ffcc76':'#ff8c78';b.drawText('Стабильность: '+Math.floor(this._stability)+'%',735,285,300,26,'left');
+ b.textColor='#fff';b.drawText('Время: '+this._time.toFixed(1)+' s',735,325,300,26,'left');
+ b.fontSize=17;b.textColor='#c7d4dc';b.drawText('Заполнение идёт только при',735,375,300,24,'left');b.drawText('давлении 45–72 bar.',735,400,300,24,'left');
+ if(this._fault){b.textColor='#ff725f';b.fontSize=23;b.drawText('АВАРИЯ: '+this._fault,735,445,360,30,'left');b.fontSize=16;b.textColor='#ffb1a5';b.drawText('быстро стабилизируй установку!',735,475,350,24,'left');}
+ b.fontSize=19;b.textColor='#dce8ef';b.drawText(this._message,24,620,w-48,32,'center');
+};
+Scene_NitrogenV6.prototype.update=function(){
+ Scene_Base.prototype.update.call(this);if(!this._started)return;
+ this._readMouse();
+ if(this._won||this._lost){if(Input.isTriggered('ok')||TouchInput.isTriggered()){SceneManager.pop();}return;}
+ var dt=1/60;this._time-=dt;
+ // Valve position controls flow continuously. Center-ish is stable; extremes are dangerous.
+ var target=this._valve;
+ var flow=(target-.50)*38; // signed valve effect
+ this._pressure += flow*dt;
+ this._pressure += (this._pressure-55)*0.012*dt*(-1); // weak return inertia
+ this._pressure=Math.max(0,Math.min(100,this._pressure));
+ // cooling improves when valve opened enough; overheating if pressure too high
+ this._temp -= Math.max(0,(this._valve-.22))*0.48*dt;
+ this._temp += Math.max(0,this._pressure-78)*0.20*dt;
+ // fill only in a narrow window, so timing matters
+ if(this._pressure>=45&&this._pressure<=72&&this._temp<=-150){this._fill += 5.0*dt;this._message='Держи вентиль! Сейчас идёт заправка — не сорви давление.';}
+ else if(this._fill<96){this._message=this._pressure<45?'Мало давления — чуть приоткрой вентиль.':this._pressure>72?'Слишком высокое давление — прикрой вентиль!':this._temp>-150?'Установка ещё слишком тёплая — держи режим.':'Лови стабильную зону.';}
+ // stability damage outside safe zone
+ var risk=0;if(this._pressure<35||this._pressure>82)risk+=10;if(this._temp>-125)risk+=3;if(this._pressure>90)risk+=25;this._stability-=risk*dt;this._stability=Math.max(0,this._stability);
+ // random faults every 8-14 sec
+ this._lastA+=dt;if(!this._fault&&this._lastA>8+Math.random()*6){this._lastA=0;var fs=['УТЕЧКА','ОБМЕРЗАНИЕ ВЕНТИЛЯ','СКАЧОК ДАВЛЕНИЯ','ПЕРЕГРЕВ'];this._fault=fs[Math.floor(Math.random()*fs.length)];this._faultT=4+Math.random()*3;}
+ if(this._fault){this._faultT-=dt;
+   if(this._fault==='УТЕЧКА'){this._pressure-=7*dt;this._fill-=2.2*dt;}
+   if(this._fault==='ОБМЕРЗАНИЕ ВЕНТИЛЯ'){this._pressure+=(this._valve>.55?5:-5)*dt;}
+   if(this._fault==='СКАЧОК ДАВЛЕНИЯ'){this._pressure+=9*dt;}
+   if(this._fault==='ПЕРЕГРЕВ'){this._temp+=5*dt;}
+   // counter-actions are inferred from physical manipulation, not a button
+   var fixed=(this._fault==='УТЕЧКА'&&this._valve>.62)||(this._fault==='ОБМЕРЗАНИЕ ВЕНТИЛЯ'&&this._valve<.38)||(this._fault==='СКАЧОК ДАВЛЕНИЯ'&&this._valve<.40)||(this._fault==='ПЕРЕГРЕВ'&&this._valve<.45);
+   if(fixed){this._fault=null;this._message='Авария устранена. Продолжай контролировать установку.';this._stability=Math.min(100,this._stability+5);}
+   else if(this._faultT<=0){this._stability-=18;this._fault=null;}
+ }
+ if(this._pressure>96){this._lost=true;this._message='РАЗРЫВ СИСТЕМЫ — давление стало критическим.';}
+ if(this._stability<=0||this._time<=0){this._lost=true;this._message=this._time<=0?'ВРЕМЯ ВЫШЛО.':'УСТАНОВКА ПОТЕРЯНА.';}
+ if(this._fill>=96&&this._pressure>=45&&this._pressure<=72&&this._temp<=-150&&this._stability>25){this._won=true;this._fill=100;this._message='УСПЕХ! Баллон заполнен. Ты удержал установку в режиме.';this._complete();}
+ this.redraw();
+};
+Scene_NitrogenV6.prototype._readMouse=function(){
+ var x=TouchInput.x,y=TouchInput.y; if(TouchInput.isTriggered()){
+   var dx=x-500,dy=y-455;if(Math.sqrt(dx*dx+dy*dy)<100)this._drag=true;
+ }
+ if(!TouchInput.isPressed())this._drag=false;
+ if(this._drag){var a=Math.atan2(y-455,x-500);var v=(a+Math.PI*.75)/(Math.PI*1.5);while(v<0)v+=1;while(v>1)v-=1;this._valve=Math.max(0,Math.min(1,v));}
+};
+Scene_NitrogenV6.prototype._complete=function(){
+ $gameVariables.setValue(12,$gameVariables.value(12)+1);if(BF.eventId>0){var key=[BF.mapId,BF.eventId,'A'];$gameSelfSwitches.setValue(key,true);}
+};
+Scene_NitrogenV6.prototype.terminate=function(){Scene_Base.prototype.terminate.call(this);};
+window.Scene_NitrogenV6=Scene_NitrogenV6;
 })();
