@@ -44,9 +44,9 @@
  * BF_Quest status <id>
  *
  * Цифры сохраняются в переменных:
- * 11 — первая цифра (бармен)
- * 12 — вторая цифра (инженер)
- * 13 — третья цифра (менеджер)
+ * 17 — первая цифра (бармен)
+ * 18 — вторая цифра (инженер)
+ * 19 — третья цифра (менеджер)
  *
  * ВАЖНО: переменные сами по себе НЕ открывают информацию в книге.
  * Цифра появляется только после завершения соответствующего квеста.
@@ -77,9 +77,9 @@
     if (!BF.QUESTS.intro) {
         BF.QUESTS = {
             intro: {title:'Расспросить работников казино', description:'Эйп попросил расспросить работников казино.', steps:[], note:'Эйп попросил расспросить работников казино.'},
-            bartender: {title:'Проблема бармена', description:'Помочь бармену разобраться с крысами в подвале казино.', steps:['Избавиться от крыс в подвале','Вернуться к бармену'], digitVariable:11, digitMode:'random', note:'Первая цифра сейфа Бруно'},
-            engineer: {title:'Проблема инженера', description:'Помочь инженеру охладить перегревающуюся серверную.', steps:['Найти жидкий азот','Отдать жидкий азот инженеру'], digitVariable:12, digit:7, note:'Вторая цифра сейфа Бруно: 7'},
-            manager: {title:'Подозрительный шулер', description:'Помочь слот-менеджеру разоблачить шулера.', steps:['Расследовать действия шулера','Найти доказательство','Вернуться к слот-менеджеру'], digitVariable:13, digit:4, note:'Третья цифра сейфа Бруно: 4'},
+            bartender: {title:'Проблема бармена', description:'Помочь бармену разобраться с крысами в подвале казино.', steps:['Избавиться от крыс в подвале','Вернуться к бармену'], digitVariable:17, digitMode:'random', note:'Первая цифра сейфа Бруно'},
+            engineer: {title:'Проблема инженера', description:'Помочь инженеру охладить перегревающуюся серверную.', steps:['Найти жидкий азот','Отдать жидкий азот инженеру'], digitVariable:18, digit:7, note:'Вторая цифра сейфа Бруно: 7'},
+            manager: {title:'Подозрительный шулер', description:'Помочь слот-менеджеру разоблачить шулера.', steps:['Расследовать действия шулера','Найти доказательство','Вернуться к слот-менеджеру'], digitVariable:19, digit:4, note:'Третья цифра сейфа Бруно: 4'},
             house: {title:'Найти дом Бруно', description:'После получения трёх цифр найти дом Бруно.', steps:['Найти дом Бруно']},
             passage: {title:'Тайный проход', description:'Найти потайной проход в подвал.', steps:['Исследовать дом Бруно','Найти потайной проход в подвал']},
             safe: {title:'Сейф Бруно', description:'Открыть сейф кодом из трёх цифр.', steps:['Найти сейф','Ввести код сейфа','Забрать бухгалтерию']},
@@ -189,11 +189,7 @@
         var q=this.get(id); if(!q || q.status!=='active') return false;
         var requested = Number(step);
         if (!isFinite(requested)) requested = 0;
-        // Existing story events use a larger numeric marker when the NPC hands over
-        // the safe digit (e.g. bartender step 2). Capture the real digit at that moment
-        // even though the visible quest still has only the 'return to NPC' step.
-        var digitVars = { bartender:11, engineer:12, manager:13 };
-        if (digitVars[id] && requested >= 1) this.captureDigit(id, digitVars[id]);
+        // The digit is captured only when the NPC actually completes the quest.
         var max=Math.max(0,(BF.QUESTS[id].steps||[]).length-1);
         q.step=Math.max(0,Math.min(requested,max)); this._currentQuest=id; this._selectedQuest=id; return true;
     };
@@ -265,9 +261,19 @@
         return true;
     };
     Game_BFQuests.prototype.syncDigitsFromVariables = function() {
-        var vars = { bartender:11, engineer:12, manager:13 };
+        // ВАЖНО: переменные 17/18/19 сами по себе НЕ означают, что цифра получена.
+        // Они могут содержать старое значение (в том числе 0) в сохранении.
+        // Цифра попадает в журнал только в момент сдачи соответствующего квеста
+        // через complete(), когда NPC действительно выдал награду.
+        var vars = { bartender:17, engineer:18, manager:19 };
         var self = this;
-        Object.keys(vars).forEach(function(id) { self.captureDigit(id, vars[id]); });
+        Object.keys(vars).forEach(function(id) {
+            var q = self.get(id);
+            if (q && q.status === 'active') {
+                delete self._digits[id];
+                delete self._notes['digit_' + id];
+            }
+        });
         return this._digits || {};
     };
     Game_BFQuests.prototype.getDigits = function() { return this._digits || {}; };

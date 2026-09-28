@@ -1,109 +1,82 @@
 /*:
- * @plugindesc BitzFantasy — Nitrogen V6. Реальная мини-игра с ручным вентилем, инерцией, риском и таймингами.
+ * @plugindesc Bitz Fantasy — BF_Nitrogen V7. Понятная мини-игра получения жидкого азота.
  * @help
- * Plugin Command: Nitrogen start
- * Успех: Variable 12 +1, Self Switch A ON.
- * Мышь/сенсор. Игрок не нажимает готовые кнопки: он вращает вентиль и управляет процессом.
+ * Управление только одним вентилем:
+ * 1) ОТКРЫТЬ вентиль — охладить систему до -150 C.
+ * 2) ПРИКРЫТЬ вентиль — выставить давление 45–72 bar.
+ * 3) УДЕРЖИВАТЬ давление в зелёной зоне — баллон заполнится автоматически.
+ * Успех: engineer -> шаг 1, Variable 10 = 6, Self Switch A ON.
  */
 (function(){
 'use strict';
+function circle(b,x,y,r,fill,stroke,lw){var c=b._context;if(!c)return;c.save();c.beginPath();c.arc(x,y,r,0,Math.PI*2);if(fill){c.fillStyle=fill;c.fill();}if(stroke){c.strokeStyle=stroke;c.lineWidth=lw||2;c.stroke();}c.restore();if(b._setDirty)b._setDirty();}
+function rect(b,x,y,w,h,stroke,lw){var c=b._context;if(!c)return;c.save();c.strokeStyle=stroke;c.lineWidth=lw||2;c.strokeRect(x,y,w,h);c.restore();if(b._setDirty)b._setDirty();}
 var BF={mapId:0,eventId:0};
 var _pc=Game_Interpreter.prototype.pluginCommand;
-Game_Interpreter.prototype.pluginCommand=function(command,args){
- _pc.call(this,command,args);
- if(String(command).toLowerCase()==='nitrogen' && String(args&&args[0]).toLowerCase()==='start'){
-   BF.mapId=this._mapId; BF.eventId=this._eventId; SceneManager.push(Scene_NitrogenV6);
- }
+Game_Interpreter.prototype.pluginCommand=function(command,args){_pc.call(this,command,args);if(String(command).toLowerCase()==='nitrogen'&&String(args&&args[0]).toLowerCase()==='start'){BF.mapId=this._mapId;BF.eventId=this._eventId;SceneManager.push(Scene_NitrogenV7);}};
+function Scene_NitrogenV7(){this.initialize.apply(this,arguments)}
+Scene_NitrogenV7.prototype=Object.create(Scene_Base.prototype);Scene_NitrogenV7.prototype.constructor=Scene_NitrogenV7;
+Scene_NitrogenV7.prototype.initialize=function(){
+ Scene_Base.prototype.initialize.call(this);
+ this._mx=0;this._my=0;this._drag=false;
+ this._pressure=18;this._temp=-92;this._fill=0;this._valve=.35;this._time=120;this._stability=100;
+ this._stage=0;this._won=false;this._lost=false;this._started=false;this._hold=0;
+ this._message='Открой вентиль: тяни ручку ПО ЧАСОВОЙ стрелке до зелёной зоны.';
 };
-
-function Scene_NitrogenV6(){this.initialize.apply(this,arguments)}
-Scene_NitrogenV6.prototype=Object.create(Scene_Base.prototype);
-Scene_NitrogenV6.prototype.constructor=Scene_NitrogenV6;
-Scene_NitrogenV6.prototype.initialize=function(){
- Scene_Base.prototype.initialize.call(this); this._mx=0;this._my=0;this._drag=false;this._lastA=0;
- this._pressure=18;this._temp=-92;this._fill=0;this._valve=0;this._stability=100;this._time=90;
- this._fault=null;this._faultT=0;this._message='Поверни вентиль и держи давление в зелёной зоне';this._won=false;this._lost=false;this._started=false;
-};
-Scene_NitrogenV6.prototype.create=function(){Scene_Base.prototype.create.call(this);this.createWindowLayer();this.createHud();this._started=true;};
-Scene_NitrogenV6.prototype.createHud=function(){
- this._g=new Sprite(new Bitmap(Graphics.boxWidth,Graphics.boxHeight));this.addChild(this._g);this.redraw();
-};
-Scene_NitrogenV6.prototype.redraw=function(){
+Scene_NitrogenV7.prototype.create=function(){Scene_Base.prototype.create.call(this);this.createWindowLayer();this.createHud();this._started=true;};
+Scene_NitrogenV7.prototype.createHud=function(){this._g=new Sprite(new Bitmap(Graphics.boxWidth,Graphics.boxHeight));this.addChild(this._g);this.redraw();};
+Scene_NitrogenV7.prototype.redraw=function(){
  var b=this._g.bitmap,w=Graphics.boxWidth,h=Graphics.boxHeight;b.clear();
- b.fillRect(0,0,w,h,'#111820');b.fillRect(0,0,w,82,'#18232d');
- b.textColor='#eaf6ff';b.fontSize=28;b.drawText('ЖИДКИЙ АЗОТ — РУЧНОЕ УПРАВЛЕНИЕ',24,15,700,36,'left');
- b.fontSize=18;b.textColor='#9fb2c2';b.drawText('Не угадывай кнопку — управляй установкой.',24,48,700,25,'left');
- // tank
- b.fillRect(70,150,190,400,'#263640');b.fillRect(90,170,150,360,'#0b1115');
- var fh=350*this._fill/100;b.fillRect(92,528-fh,146,fh,'#86d9ef');
- b.strokeRect(70,150,190,400,'#78909c');b.fontSize=20;b.textColor='#fff';b.drawText('БАЛЛОН',92,565,150,28,'center');b.drawText(Math.floor(this._fill)+' %',92,300,146,30,'center');
- // pressure gauge
- b.fillRect(330,145,330,85,'#202d36');b.fontSize=18;b.textColor='#fff';b.drawText('ДАВЛЕНИЕ',350,157,150,25,'left');
- var px=350,py=198,pw=285;b.fillRect(px,py,pw,12,'#394a55');b.fillRect(px+pw*.45,py,pw*.25,12,'#62b36b');var knob=Math.max(0,Math.min(1,this._pressure/100));b.fillRect(px,py,pw*knob,12,'#d8edf5');b.fontSize=22;b.drawText(this._pressure.toFixed(1)+' bar',500,155,140,30,'right');
- // temp
- b.fillRect(330,250,330,85,'#202d36');b.fontSize=18;b.drawText('ТЕМПЕРАТУРА',350,262,170,25,'left');b.fontSize=22;b.drawText(this._temp.toFixed(0)+' °C',500,260,140,30,'right');
- var tc=Math.max(0,Math.min(1,(-this._temp-80)/110));b.fillRect(350,303,285,12,'#394a55');b.fillRect(350,303,285*tc,12,'#82cde1');
+ b.fillRect(0,0,w,h,'#101820');b.fillRect(0,0,w,92,'#18252f');
+ b.textColor='#eaf6ff';b.fontSize=28;b.drawText('ПОЛУЧЕНИЕ ЖИДКОГО АЗОТА',24,12,700,34,'left');
+ b.fontSize=16;b.textColor='#a9bcc8';b.drawText('Здесь нужен только один орган управления — РУЧНОЙ ВЕНТИЛЬ.',24,51,720,24,'left');
+ // stages
+ var st=[['1','ОХЛАДИТЬ','до −150 °C'],['2','ДАВЛЕНИЕ','45–72 bar'],['3','ЗАПРАВИТЬ','100 %']];
+ for(var i=0;i<3;i++){var x=24+i*250,active=i===this._stage,done=i<this._stage;b.fillRect(x,104,230,50,done?'#244b3a':active?'#31546a':'#202d36');b.fontSize=15;b.textColor=done?'#9ce8ae':active?'#fff':'#81919b';b.drawText(st[i][0]+'. '+st[i][1],x+12,111,205,20,'left');b.fontSize=13;b.textColor=done?'#9ce8ae':active?'#b9d8e8':'#71818b';b.drawText(st[i][2],x+12,132,205,18,'left');}
+ // left: tank and process arrows
+ b.fillRect(55,180,170,280,'#263640');b.fillRect(72,198,136,244,'#0b1115');var fh=226*this._fill/100;b.fillRect(74,440-fh,132,fh,'#86d9ef');rect(b,55,180,170,280,'#78909c',2);b.fontSize=19;b.textColor='#fff';b.drawText('БАЛЛОН',67,468,146,26,'center');b.fontSize=22;b.drawText(Math.floor(this._fill)+' %',67,300,146,32,'center');b.fontSize=13;b.textColor='#9fb2c2';b.drawText('заправка',67,332,146,20,'center');
+ b.fontSize=15;b.textColor='#b8d7e2';b.drawText('ХОЛОДИЛЬНИК',55,475,170,22,'center');b.drawText('↓',125,496,30,24,'center');b.textColor=this._temp<=-150?'#8fe09a':'#ffcc76';b.drawText(this._temp.toFixed(0)+' °C',67,518,146,24,'center');
+ // gauges
+ b.fillRect(240,180,290,100,'#202d36');b.fontSize=17;b.textColor='#fff';b.drawText('ДАВЛЕНИЕ',260,193,130,22,'left');b.fontSize=20;b.drawText(this._pressure.toFixed(1)+' bar',415,191,105,28,'right');var px=260,py=230,pw=250;b.fillRect(px,py,pw,17,'#394a55');b.fillRect(px+pw*.45,py,pw*.27,17,'#3f8b57');b.fillRect(px,py,pw*Math.max(0,Math.min(1,this._pressure/100)),17,'#d8edf5');b.fontSize=12;b.textColor='#a8c2ad';b.drawText('зелёная зона 45–72 bar',260,253,250,18,'center');
+ b.fillRect(240,292,290,100,'#202d36');b.fontSize=17;b.textColor='#fff';b.drawText('ОХЛАЖДЕНИЕ',260,305,180,22,'left');var cool=Math.max(0,Math.min(100,((-this._temp)-92)/58*100));b.fillRect(260,343,250,17,'#394a55');b.fillRect(260,343,250*cool/100,17,'#82cde1');b.fontSize=12;b.textColor='#b8d7e2';b.drawText('цель −150 °C',260,365,250,18,'center');
  // valve
- var vx=500,vy=455,r=76;b.fillCircle(vx,vy,r,'#344955');b.strokeCircle(vx,vy,r,'#a9c3d0');
- var ang=-Math.PI*.75 + this._valve*Math.PI*1.5;b.fillRect(vx-7,vy-64,14,64,'#e1edf2');b.rotation=0; // draw rotated handle via polygon
- var x2=vx+Math.cos(ang)*58,y2=vy+Math.sin(ang)*58;b.fillCircle(vx,vy,11,'#d7e7ed');b.fillCircle(x2,y2,16,'#d7e7ed');
- b.fontSize=18;b.textColor='#fff';b.drawText('ВЕНТИЛЬ',425,555,150,26,'center');b.textColor='#a8bac6';b.drawText('тяни мышью по кругу',390,580,220,24,'center');
- // status
- b.fillRect(710,145,Graphics.boxWidth-750,385,'#202d36');b.fontSize=20;b.textColor='#fff';b.drawText('СОСТОЯНИЕ',735,160,260,28,'left');
- b.fontSize=18;b.textColor=this._pressure>=45&&this._pressure<=72?'#8fe09a':'#ff9b7d';b.drawText('Давление: '+(this._pressure>=45&&this._pressure<=72?'НОРМА':'ОПАСНО'),735,205,300,26,'left');
- b.textColor=this._temp<=-150?'#8fe09a':'#ffcc76';b.drawText('Охлаждение: '+(this._temp<=-150?'ГОТОВО':'ИДЁТ'),735,245,300,26,'left');
- b.textColor=this._stability>60?'#8fe09a':this._stability>25?'#ffcc76':'#ff8c78';b.drawText('Стабильность: '+Math.floor(this._stability)+'%',735,285,300,26,'left');
- b.textColor='#fff';b.drawText('Время: '+this._time.toFixed(1)+' s',735,325,300,26,'left');
- b.fontSize=17;b.textColor='#c7d4dc';b.drawText('Заполнение идёт только при',735,375,300,24,'left');b.drawText('давлении 45–72 bar.',735,400,300,24,'left');
- if(this._fault){b.textColor='#ff725f';b.fontSize=23;b.drawText('АВАРИЯ: '+this._fault,735,445,360,30,'left');b.fontSize=16;b.textColor='#ffb1a5';b.drawText('быстро стабилизируй установку!',735,475,350,24,'left');}
- b.fontSize=19;b.textColor='#dce8ef';b.drawText(this._message,24,620,w-48,32,'center');
+ var vx=385,vy=475,r=68;circle(b,vx,vy,r,'#344955','#a9c3d0',3);
+ var c=b._context;c.save();c.beginPath();c.arc(vx,vy,r-10,-Math.PI*.85,Math.PI*.25);c.strokeStyle='#69b77b';c.lineWidth=12;c.stroke();c.restore();
+ var ang=-Math.PI*.72+this._valve*Math.PI*1.5,x2=vx+Math.cos(ang)*52,y2=vy+Math.sin(ang)*52;circle(b,vx,vy,12,'#d7e7ed');circle(b,x2,y2,16,'#d7e7ed');
+ b.fontSize=16;b.textColor='#fff';b.drawText('РУЧНОЙ ВЕНТИЛЬ',315,548,190,22,'center');b.fontSize=12;b.textColor='#a8bac6';b.drawText('ЛКМ: ЗАЖМИ РУЧКУ И ТЯНИ ПО КРУГУ',270,570,230,18,'center');b.textColor='#7fc88e';b.drawText('зелёная дуга = нужное положение',295,590,230,18,'center');
+ // right instructions — короткая подсказка без дублирования показателей
+ var rx=Math.min(550,w-250),rw=w-rx-24;b.fillRect(rx,180,rw,424,'#202d36');b.fontSize=18;b.textColor='#fff';b.drawText('ЧТО ДЕЛАТЬ',rx+14,195,rw-28,26,'left');
+ var title='',body='';
+ if(this._stage===0){title='ШАГ 1 — ОХЛАДИТЬ';body='Зажми ЛКМ на ручке и тяни её по часовой стрелке. Открой вентиль до зелёной дуги. Жди −150 °C.';}
+ else if(this._stage===1){title='ШАГ 2 — ДАВЛЕНИЕ';body='Поверни вентиль обратно и выставь давление в зелёной зоне: 45–72 bar.';}
+ else {title='ШАГ 3 — ЗАПРАВКА';body='Удерживай давление 45–72 bar. Баллон заполнится автоматически до 100%.';}
+ b.fontSize=15;b.textColor='#9ce8ae';b.drawText(title,rx+12,236,rw-24,24,'left');b.fontSize=14;b.textColor='#dce8ef';var lines=this._wrap(body,27),yy=274;for(var q=0;q<lines.length;q++){b.drawText(lines[q],rx+12,yy,rw-24,20,'left');yy+=22;}
+ b.fontSize=14;b.textColor='#fff';b.drawText('ВЕНТИЛЬ: '+Math.round(this._valve*100)+'%',rx+12,365,rw-24,20,'left');b.textColor=this._pressure>=45&&this._pressure<=72?'#8fe09a':'#ff9b7d';b.drawText('ДАВЛЕНИЕ: '+this._pressure.toFixed(1)+' bar',rx+12,391,rw-24,20,'left');b.textColor=this._temp<=-150?'#8fe09a':'#ffcc76';b.drawText('ТЕМПЕРАТУРА: '+this._temp.toFixed(0)+' °C',rx+12,417,rw-24,20,'left');
+ b.fillRect(rx+10,458,rw-20,108,this._stage===2?'#183b2a':'#263640');b.fontSize=13;b.textColor=this._stage===2?'#9ce8ae':'#dce8ef';var m=this._stage===2?'Заправка идёт автоматически.':this._message;var ml=this._wrap(m,27);for(q=0;q<ml.length;q++)b.drawText(ml[q],rx+18,470+q*19,rw-36,19,'left');
+ b.fontSize=14;b.textColor='#dce8ef';b.drawText(this._stage===0?'ЦЕЛЬ: ОХЛАДИТЬ':this._stage===1?'ЦЕЛЬ: 45–72 bar':'ЦЕЛЬ: 100 %',24,603,w-48,20,'center');
 };
-Scene_NitrogenV6.prototype.update=function(){
+Scene_NitrogenV7.prototype._wrap=function(s,n){var a=s.split(' '),out=[],line='';for(var i=0;i<a.length;i++){var t=line+(line?' ':'')+a[i];if(t.length>n){out.push(line);line=a[i];}else line=t;}if(line)out.push(line);return out;};
+Scene_NitrogenV7.prototype.update=function(){
  Scene_Base.prototype.update.call(this);if(!this._started)return;
- this._readMouse();
- if(this._won||this._lost){if(Input.isTriggered('ok')||TouchInput.isTriggered()){SceneManager.pop();}return;}
+ this._readMouse();if(this._won||this._lost){if(Input.isTriggered('ok')||TouchInput.isTriggered())SceneManager.pop();return;}
  var dt=1/60;this._time-=dt;
- // Valve position controls flow continuously. Center-ish is stable; extremes are dangerous.
- var target=this._valve;
- var flow=(target-.50)*38; // signed valve effect
- this._pressure += flow*dt;
- this._pressure += (this._pressure-55)*0.012*dt*(-1); // weak return inertia
+ // Valve is the only control. More open = more cooling, but pressure tends to rise too.
+ var open=this._valve;
+ this._pressure += ((open*95)-this._pressure)*0.035*dt;
  this._pressure=Math.max(0,Math.min(100,this._pressure));
- // cooling improves when valve opened enough; overheating if pressure too high
- this._temp -= Math.max(0,(this._valve-.22))*0.48*dt;
- this._temp += Math.max(0,this._pressure-78)*0.20*dt;
- // fill only in a narrow window, so timing matters
- if(this._pressure>=45&&this._pressure<=72&&this._temp<=-150){this._fill += 5.0*dt;this._message='Держи вентиль! Сейчас идёт заправка — не сорви давление.';}
- else if(this._fill<96){this._message=this._pressure<45?'Мало давления — чуть приоткрой вентиль.':this._pressure>72?'Слишком высокое давление — прикрой вентиль!':this._temp>-150?'Установка ещё слишком тёплая — держи режим.':'Лови стабильную зону.';}
- // stability damage outside safe zone
- var risk=0;if(this._pressure<35||this._pressure>82)risk+=10;if(this._temp>-125)risk+=3;if(this._pressure>90)risk+=25;this._stability-=risk*dt;this._stability=Math.max(0,this._stability);
- // random faults every 8-14 sec
- this._lastA+=dt;if(!this._fault&&this._lastA>8+Math.random()*6){this._lastA=0;var fs=['УТЕЧКА','ОБМЕРЗАНИЕ ВЕНТИЛЯ','СКАЧОК ДАВЛЕНИЯ','ПЕРЕГРЕВ'];this._fault=fs[Math.floor(Math.random()*fs.length)];this._faultT=4+Math.random()*3;}
- if(this._fault){this._faultT-=dt;
-   if(this._fault==='УТЕЧКА'){this._pressure-=7*dt;this._fill-=2.2*dt;}
-   if(this._fault==='ОБМЕРЗАНИЕ ВЕНТИЛЯ'){this._pressure+=(this._valve>.55?5:-5)*dt;}
-   if(this._fault==='СКАЧОК ДАВЛЕНИЯ'){this._pressure+=9*dt;}
-   if(this._fault==='ПЕРЕГРЕВ'){this._temp+=5*dt;}
-   // counter-actions are inferred from physical manipulation, not a button
-   var fixed=(this._fault==='УТЕЧКА'&&this._valve>.62)||(this._fault==='ОБМЕРЗАНИЕ ВЕНТИЛЯ'&&this._valve<.38)||(this._fault==='СКАЧОК ДАВЛЕНИЯ'&&this._valve<.40)||(this._fault==='ПЕРЕГРЕВ'&&this._valve<.45);
-   if(fixed){this._fault=null;this._message='Авария устранена. Продолжай контролировать установку.';this._stability=Math.min(100,this._stability+5);}
-   else if(this._faultT<=0){this._stability-=18;this._fault=null;}
- }
- if(this._pressure>96){this._lost=true;this._message='РАЗРЫВ СИСТЕМЫ — давление стало критическим.';}
- if(this._stability<=0||this._time<=0){this._lost=true;this._message=this._time<=0?'ВРЕМЯ ВЫШЛО.':'УСТАНОВКА ПОТЕРЯНА.';}
- if(this._fill>=96&&this._pressure>=45&&this._pressure<=72&&this._temp<=-150&&this._stability>25){this._won=true;this._fill=100;this._message='УСПЕХ! Баллон заполнен. Ты удержал установку в режиме.';this._complete();}
+ if(this._stage===0){this._temp-=Math.max(0,open-.25)*1.35*dt;this._temp+=Math.max(0,this._pressure-88)*0.22*dt;if(this._temp<=-150){this._stage=1;this._message='Отлично! Теперь прикрой вентиль и выставь 45–72 bar.';}}
+ else if(this._stage===1){if(this._pressure>=45&&this._pressure<=72){this._stage=2;this._message='Давление в норме. Баллон теперь заполняется сам.';this._hold=0;}else{this._message=this._pressure<45?'Давление низкое — немного открой вентиль.':'Давление высокое — немного прикрой вентиль.';}}
+ if(this._stage===2){if(this._pressure>=45&&this._pressure<=72){this._fill+=8.0*dt;this._hold+=dt;}else{this._message=this._pressure<45?'Заправка остановилась: немного открой вентиль.':'Заправка остановилась: немного прикрой вентиль.';}}
+ // Keep temperature cold after cooling.
+ if(this._stage>=1&&this._temp>-150)this._temp-=0.15*dt;
+ if(this._pressure>96)this._stability-=8*dt;if(this._pressure<25)this._stability-=3*dt;this._stability=Math.max(0,this._stability);
+ if(this._pressure>96){this._lost=true;this._message='АВАРИЯ: слишком высокое давление.';}
+ if(this._time<=0||this._stability<=0){this._lost=true;this._message=this._time<=0?'Время вышло.':'Система нестабильна.';}
+ if(this._fill>=100&&this._pressure>=45&&this._pressure<=72&&this._stability>25){this._fill=100;this._won=true;this._message='УСПЕХ! Жидкий азот получен. Нажми экран.';this._complete();}
  this.redraw();
 };
-Scene_NitrogenV6.prototype._readMouse=function(){
- var x=TouchInput.x,y=TouchInput.y; if(TouchInput.isTriggered()){
-   var dx=x-500,dy=y-455;if(Math.sqrt(dx*dx+dy*dy)<100)this._drag=true;
- }
- if(!TouchInput.isPressed())this._drag=false;
- if(this._drag){var a=Math.atan2(y-455,x-500);var v=(a+Math.PI*.75)/(Math.PI*1.5);while(v<0)v+=1;while(v>1)v-=1;this._valve=Math.max(0,Math.min(1,v));}
-};
-Scene_NitrogenV6.prototype._complete=function(){
- $gameVariables.setValue(12,$gameVariables.value(12)+1);if(BF.eventId>0){var key=[BF.mapId,BF.eventId,'A'];$gameSelfSwitches.setValue(key,true);}
-};
-Scene_NitrogenV6.prototype.terminate=function(){Scene_Base.prototype.terminate.call(this);};
-window.Scene_NitrogenV6=Scene_NitrogenV6;
+Scene_NitrogenV7.prototype._readMouse=function(){var x=TouchInput.x,y=TouchInput.y;if(TouchInput.isTriggered()){var dx=x-385,dy=y-475;if(Math.sqrt(dx*dx+dy*dy)<100)this._drag=true;}if(!TouchInput.isPressed())this._drag=false;if(this._drag){var a=Math.atan2(y-475,x-385),v=(a+Math.PI*.72)/(Math.PI*1.5);while(v<0)v+=1;while(v>1)v-=1;this._valve=Math.max(0,Math.min(1,v));}};
+Scene_NitrogenV7.prototype._complete=function(){if(window.BF_QuestSystem&&typeof window.BF_QuestSystem.game==='function')window.BF_QuestSystem.game().setStep('engineer',1);if(window.$gameVariables)$gameVariables.setValue(10,6);if(BF.eventId>0)$gameSelfSwitches.setValue([BF.mapId,BF.eventId,'A'],true);};
+Scene_NitrogenV7.prototype.terminate=function(){Scene_Base.prototype.terminate.call(this);};
+window.Scene_NitrogenV6=Scene_NitrogenV7;
 })();
