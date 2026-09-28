@@ -75,7 +75,7 @@ Scene_BrunoInterrogation.prototype.answer=function(i){
 Scene_BrunoInterrogation.prototype.update=function(){
  Scene_MenuBase.prototype.update.call(this);
  if(this.timer>0){this.timer--;if(this.timer===0){
-  if(this.done){$gameVariables.setValue(RESULT,1);this.popScene();}
+  if(this.done){$gameVariables.setValue(RESULT,1);if(window.BF_QuestSystem&&typeof window.BF_QuestSystem.miniSuccess==='function')window.BF_QuestSystem.miniSuccess();this.popScene();}
   else{this.msg='';this.win.refresh();}
  }}
 };

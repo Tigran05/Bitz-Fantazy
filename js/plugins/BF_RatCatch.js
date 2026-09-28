@@ -10,7 +10,7 @@
  *   BF_RatCatch_Start();
  *
  * Result:
- *   Variable 11 = 1
+ *   Quest receives SUCCESS
  *   Self Switch A of the launching event = ON
  *
  * Controls:
@@ -22,7 +22,7 @@
 (function(){
 'use strict';
 
-var W=1280,H=720,TOTAL=6,RESULT_VAR=11,WAIT='bfRatCatchWait';
+var W=1280,H=720,TOTAL=6,RESULT_VAR=0,WAIT='bfRatCatchWait';
 var ROOT='BF_RatCatch/';
 var origin={mapId:0,eventId:0};
 var cache={};
@@ -56,6 +56,7 @@ Scene_BFRatCatch.prototype.constructor=Scene_BFRatCatch;
 Scene_BFRatCatch.prototype.initialize=function(){
   Scene_Base.prototype.initialize.call(this);
   this._frame=0; this._caught=0; this._drag=null; this._done=false; this._tokenTaken=false;
+  this._finishTimer=0; this._tokenSeed=2; this._lastHint=0; this._finishTimer=0;
   this._fanOn=false; this._fanFrame=0; this._fanTimer=0;
   this._valveMode=0; // -1 left, 0 closed, 1 right
   this._valveAngle=0; this._valveFrom=0; this._valveTo=0; this._valveT=1;
@@ -124,7 +125,7 @@ Scene_BFRatCatch.prototype.createRats=function(){
   for(var i=0;i<6;i++){
     var p=starts[i],sh=this.sp('shadow',p[0],p[1]+8,.16,.5,.5,this._ratLayer); sh.alpha=.15;
     var s=this.sp('rat_'+(i+1),p[0],p[1],.84,.5,1,this._ratLayer);
-    this._rats.push({id:i,x:p[0],y:p[1],homeX:p[0],homeY:p[1],side:i<3?0:1,speed:28+(i%3)*2,panic:0,angle:0,target:null,caught:false,committed:false,seed:1.7*i,sprite:s,shadow:sh,wait:0,goalIndex:i});
+    this._rats.push({id:i,x:p[0],y:p[1],homeX:p[0],homeY:p[1],side:i<3?0:1,speed:28+(i%3)*2,panic:0,angle:0,target:null,caught:false,committed:false,interested:0,seed:1.7*i,sprite:s,shadow:sh,wait:0,goalIndex:i});
   }
 };
 
@@ -225,12 +226,25 @@ Scene_BFRatCatch.prototype.pickPoint=function(r){
 };
 Scene_BFRatCatch.prototype.ratTarget=function(r){
   if(r.caught)return {x:r.x,y:r.y};
+  if(!this._cheese.placed)return this.pickPoint(r);
+
+  // The cheese is mandatory: without it rats can NEVER be captured.
+  // Once airflow is aimed at a rat's side, that rat follows the scent corridor.
+  var activeSide=this._valveMode<0?0:(this._valveMode>0?1:-1);
+  var active=activeSide>=0 && this._fanOn && (activeSide===0?this._shutters[0]:this._shutters[1]);
+  var dCheese=dist(r.x,r.y,this._cheese.x,this._cheese.y);
+
+  if(!r.committed && active && r.side===activeSide){
+    r.interested=Math.min(1,(r.interested||0)+.025);
+    // Close enough to smell the bait: lock this rat onto the trap route.
+    if(dCheese<120 || r.interested>.72) r.committed=true;
+  } else {
+    r.interested=Math.max(0,(r.interested||0)-.008);
+  }
+
   if(r.committed)return {x:this._trap.x,y:this._trap.y-4};
-  var toCheese=r.side===0?this.windLeft():this.windRight();
-  if(this._cheese.placed&&toCheese){
-    var lane=r.side===0?[[300,500],[400,525],[500,555],[585,575],[630,586]]:[[980,500],[900,525],[800,555],[720,575],[650,586]];
-    for(var i=0;i<lane.length;i++) if(dist(r.x,r.y,lane[i][0],lane[i][1])>35)return lane[i];
-    r.committed=true;return {x:this._trap.x,y:this._trap.y-4};
+  if(dCheese<140){
+    return {x:this._cheese.x+(r.side===0?-30:30),y:this._cheese.y+8};
   }
   return this.pickPoint(r);
 };
@@ -265,15 +279,38 @@ Scene_BFRatCatch.prototype.updateRats=function(){
     var base=Math.abs(r.sprite.scale.x)||.84; r.sprite.scale.x=r.angle>Math.PI/2||r.angle< -Math.PI/2?-base:base;
     r.sprite.y=r.y+Math.sin(this._frame*.16+r.seed)*1.5;
     r.sprite.rotation=Math.sin(this._frame*.08+r.seed)*.025;
-    if(this._trap.busy<=0&&dist(r.x,r.y,this._trap.x,this._trap.y)<62)this.captureRat(r);
+    if(this._trap.busy<=0&&this._cheese.placed&&r.committed&&dist(r.x,r.y,this._trap.x,this._trap.y)<62)this.captureRat(r);
   }
 };
 
 Scene_BFRatCatch.prototype.captureRat=function(r){
   if(r.caught)return; r.caught=true; this._caught++; r.sprite.visible=false;r.shadow.visible=false;
   this._trap.busy=28; this._trapSp.bitmap=img('mousetrap_closed'); seOk();
-  if(this._caught<TOTAL)this.showMessage('Щёлк! Крыса поймана.');
-  else{this.showMessage('Все крысы пойманы. Заберите фишку.');this._token.visible=true;}
+  if(this._caught<TOTAL){
+    this.showMessage('Щёлк! Крыса поймана.');
+    return;
+  }
+
+  // Все крысы пойманы: это и есть выполнение задания.
+  // Монетка — необязательная скрытая находка и на квест не влияет.
+  this.showMessage('Все крысы пойманы. Поищите спрятанную фишку!');
+  if(this._token){ this._token.visible=true; this._token.alpha=.62; this._token.x=1038; this._token.y=612; }
+  this._finishTimer=240;
+  if(window.BF_QuestSystem && typeof window.BF_QuestSystem.minigameResult==='function'){
+    window.BF_QuestSystem.minigameResult('SUCCESS');
+  }
+  // После успешной поимки событие крыс больше нельзя запустить повторно.
+  if(origin.mapId&&origin.eventId){
+    $gameSelfSwitches.setValue([origin.mapId,origin.eventId,'A'],true);
+  }
+  // В квесте бармена отдельно открываем страницу возврата к Майку.
+  var mg = null;
+  try {
+    mg = window.BF_QuestSystem && window.BF_QuestSystem.game ? window.BF_QuestSystem.game()._minigame : null;
+  } catch(e) {}
+  if (mg && mg.questId === 'bartender') {
+    $gameSelfSwitches.setValue([7,8,'A'],true);
+  }
 };
 
 Scene_BFRatCatch.prototype.hit=function(p){
@@ -294,8 +331,8 @@ Scene_BFRatCatch.prototype.drag=function(){
 Scene_BFRatCatch.prototype.dropDrag=function(){
   if(!this._drag)return;this.drag();var d=this._drag,o=d.obj;
   if(d.type==='cheese'){
-    if(dist(o.x,o.y,this._trap.x,this._trap.y-10)<78){o.x=this._trap.x;o.y=this._trap.y-13;this._cheese.placed=true;this.showMessage('Сыр установлен в крысоловку.');seOk();}
-    else{o.x=o.homeX;o.y=o.homeY;this.showMessage('Сыр нужно положить в крысоловку.');seBuzzer();}
+    if(dist(o.x,o.y,this._trap.x,this._trap.y-10)<78){o.x=this._trap.x;o.y=this._trap.y-13;this._cheese.placed=true;seOk();}
+    else{o.x=o.homeX;o.y=o.homeY;seBuzzer();}
   }else if(d.type==='crate'){
     if(this.crateOverlaps(o,o.x,o.y)){o.x=o.homeX;o.y=o.homeY;this.showMessage('Здесь ящик мешает проходу.');seBuzzer();}
     else{seOk();}
@@ -307,46 +344,50 @@ Scene_BFRatCatch.prototype.turnValve=function(){
   var next=this._valveMode===-1?0:this._valveMode===0?1:-1;
   this._valveMode=next;this._valveFrom=this._valveAngle;
   this._valveTo=next<0?-Math.PI/2:next>0?Math.PI/2:0;this._valveT=0;
-  this.showMessage(next<0?'Вентиль: влево.':next>0?'Вентиль: вправо.':'Вентиль перекрыт.');
+  // The big valve controls the two shutters. No second button puzzle.
+  this._shutters=[next<0,next>0];
+  if(next<0)this.showMessage('Поток направлен влево: крысы слева слышат сыр.');
+  else if(next>0)this.showMessage('Поток направлен вправо: крысы справа слышат сыр.');
+  else this.showMessage('Вентиляция перекрыта.');
+  seOk();
 };
-Scene_BFRatCatch.prototype.toggleFan=function(){this._fanOn=!this._fanOn;this.showMessage(this._fanOn?'Вентилятор запущен.':'Вентилятор остановлен.');seOk();};
-Scene_BFRatCatch.prototype.toggleShutter=function(i){this._shutters[i]=!this._shutters[i];this.showMessage(i===0?(this._shutters[0]?'Левая решётка открывается.':'Левая решётка закрывается.'):(this._shutters[1]?'Правая решётка открывается.':'Правая решётка закрывается.'));seOk();};
+Scene_BFRatCatch.prototype.toggleFan=function(){
+  if(!this._cheese.placed){ this.showMessage('Сначала положите сыр в крысоловку.'); seBuzzer(); return; }
+  if(this._valveMode===0){ seBuzzer(); return; }
+  this._fanOn=!this._fanOn;this.showMessage(this._fanOn?'Вентилятор запущен.':'Вентилятор остановлен.');seOk();
+};
+Scene_BFRatCatch.prototype.toggleShutter=function(i){ seBuzzer(); };
 Scene_BFRatCatch.prototype.takeToken=function(){
   if(this._tokenTaken)return;
-
   this._tokenTaken=true;
-  this._token.visible=false;
-
-  // Успешное завершение мини-приложения.
-  // BF_QuestSystem переводит текущий выбранный квест на следующий шаг.
-  $gameVariables.setValue(RESULT_VAR,1);
-  if(window.BF_QuestSystem && typeof window.BF_QuestSystem.minigameResult==='function'){
-    window.BF_QuestSystem.minigameResult('SUCCESS');
+  if(this._token)this._token.visible=false;
+  if(window.BF_Inventory && typeof window.BF_Inventory.game==='function'){
+    window.BF_Inventory.game().add('coin',1);
+  } else if(window.$gameBFInventory && typeof window.$gameBFInventory.add==='function'){
+    window.$gameBFInventory.add('coin',1);
   }
-
-  // Старое поведение запускающего события сохраняется.
-  if(origin.mapId&&origin.eventId){
-    $gameSelfSwitches.setValue([origin.mapId,origin.eventId,'A'],true);
-  }
+  this._finishTimer=1;
   this._done=true;
   seOk();
-  SceneManager.pop();
 };
 Scene_BFRatCatch.prototype.createToken=function(){
-  this._token=this.sp('token',1035,635,.60,.5,.5,this._fxLayer);this._token.visible=false;
+  // Hidden easter egg: visible only after all rats are caught, but bright enough to be discoverable.
+  this._token=this.sp('token',1038,612,.42,.5,.5,this._fxLayer);
+  this._token.alpha=.62;
+  this._token.visible=false;
 };
 Scene_BFRatCatch.prototype.resetPuzzle=function(){
-  this._caught=0;this._tokenTaken=false;this._done=false;this._fanOn=false;this._fanFrame=0;this._fanTimer=0;this._valveMode=0;this._valveAngle=0;this._valveFrom=0;this._valveTo=0;this._valveT=1;this._shutters=[false,false];this._shutterP=[0,0];this._trap.busy=0;this._trapSp.bitmap=img('mousetrap_open');this._token.visible=false;
+  this._caught=0;this._tokenTaken=false;this._done=false;this._fanOn=false;this._fanFrame=0;this._fanTimer=0;this._valveMode=0;this._valveAngle=0;this._valveFrom=0;this._valveTo=0;this._valveT=1;this._shutters=[false,false];this._shutterP=[0,0];this._trap.busy=0;this._trapSp.bitmap=img('mousetrap_open');this._finishTimer=0;this._tokenTaken=false;if(this._token){this._token.visible=false;this._token.alpha=.62;this._token.scale.set(.42);}
   this._cheese.x=this._cheese.homeX;this._cheese.y=this._cheese.homeY;this._cheese.placed=false;this._cheese.held=false;this._cheese.sprite.x=this._cheese.x;this._cheese.sprite.y=this._cheese.y;
   for(var i=0;i<this._crates.length;i++){var c=this._crates[i];c.x=c.homeX;c.y=c.homeY;c.held=false;c.sprite.visible=true;c.sprite.x=c.x;c.sprite.y=c.y;c.shadow.x=c.x;c.shadow.y=c.y+8;}
-  for(var j=0;j<this._rats.length;j++){var r=this._rats[j];r.x=r.homeX;r.y=r.homeY;r.caught=false;r.committed=false;r.panic=0;r.sprite.visible=true;r.shadow.visible=true;r.sprite.x=r.x;r.sprite.y=r.y;r.goalIndex=j;r.vx=0;r.vy=0;}
+  for(var j=0;j<this._rats.length;j++){var r=this._rats[j];r.x=r.homeX;r.y=r.homeY;r.caught=false;r.committed=false;r.interested=0;r.panic=0;r.sprite.visible=true;r.shadow.visible=true;r.sprite.x=r.x;r.sprite.y=r.y;r.goalIndex=j;r.vx=0;r.vy=0;}
   this.showMessage('Головоломка сброшена.');
 };
 
 Scene_BFRatCatch.prototype.updateInput=function(){
   if(Input.isTriggered('escape')){SceneManager.pop();return;}
   if(Input.isTriggered('r')){this.resetPuzzle();return;}
-  if(Input.isTriggered('s')){this.showMessage('Сыр → крысоловка. Вентилятор → вентиль → решётка.');return;}
+  if(Input.isTriggered('s')){return;}
   if(this._drag){if(TouchInput.isReleased())this.dropDrag();else this.drag();return;}
   if(!TouchInput.isTriggered())return;
   var p=this.mouse(),h=this.hit(p);if(!h)return;
@@ -362,20 +403,33 @@ Scene_BFRatCatch.prototype.update=function(){
   Scene_Base.prototype.update.call(this);this._frame++;this.resizeWorld();
   this.updateMechanisms();this.updateWind();this.updateRats();this.updateInput();
   if(this._msgT>0){this._msgT--;if(this._msgT%4===0)this.refreshHud();}
+  if(this._finishTimer>0){
+    this._finishTimer--;
+    if(this._token&&this._token.visible){
+      this._token.alpha=.48+.20*Math.sin(this._frame*.18);
+      var ps=.42+.035*Math.sin(this._frame*.12); this._token.scale.set(ps);
+    }
+    if(this._finishTimer===0){this._done=true;SceneManager.pop();return;}
+  }
 };
 
 // Patch create() to create token after layers are ready.
 var _create=Scene_BFRatCatch.prototype.create;
-Scene_BFRatCatch.prototype.create=function(){_create.call(this);this.createToken();this._token.visible=false;};
+Scene_BFRatCatch.prototype.create=function(){_create.call(this);this.createToken();};
 
 var oldPC=Game_Interpreter.prototype.pluginCommand;
 Game_Interpreter.prototype.pluginCommand=function(command,args){
   oldPC.call(this,command,args);
   var c=String(command||'').toUpperCase();var a=(args||[]).map(function(v){return String(v||'').toLowerCase();});
-  if(c==='BF_RATCATCH'&&(!a.length||a[0]==='start')){
+  if((c==='BF_RATCATCH'||c==='RATCATCH')&&(!a.length||a[0]==='start')){
     origin={mapId:this._mapId||$gameMap.mapId(),eventId:this._eventId||0};
+    var allowed=true;
     if(window.BF_QuestSystem && typeof window.BF_QuestSystem.minigameStart==='function'){
-      window.BF_QuestSystem.minigameStart('BF_RatCatch');
+      allowed=window.BF_QuestSystem.minigameStart('BF_RatCatch','bartender');
+    }
+    if(!allowed){
+      $gameMessage.add('Сначала поговорите с барменом.');
+      return;
     }
     this.setWaitMode(WAIT); SceneManager.push(Scene_BFRatCatch);
   }

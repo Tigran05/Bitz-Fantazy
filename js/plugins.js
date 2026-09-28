@@ -4,16 +4,15 @@ var $plugins =
 [
 {"name":"Community_Basic","status":true,"description":"Plugin used to set basic parameters.","parameters":{"cacheLimit":"20","screenWidth":"816","screenHeight":"624","changeWindowWidthTo":"","changeWindowHeightTo":"","renderingMode":"auto","alwaysDash":"off"}},
 {"name":"TelegramWebApp","status":true,"description":"Telegram Web App Integration & Fixes","parameters":{}},
-{"name":"BF_Cheater_FULL","status":true,"description":"BitzFantasy — Разоблачение жулика v3.0 Full","parameters":{}},
-{"name":"BF_BrunoInterrogation_FULL","status":true,"description":"BitzFantasy — Допрос Бруно v3.0 Full","parameters":{}},
-{"name":"BF_Nitrogen_FULL","status":true,"description":"BitzFantasy — Мини-игра жидкого азота v3.0 Full","parameters":{}},
-{"name":"BF_RatCatch","status":true,"description":"Bitz Fantasy - Rat Catch v8. Fixed MV Bitmap error, clearer broom controls and reliable quest completion.","parameters":{}},
 {"name":"BF_DetectiveMode","status":true,"description":"Bitz Fantasy — детективный режим: отключает боевые столкновения.","parameters":{}},
-{"name":"BF_CaseFiles","status":true,"description":"Bitz Fantasy — seven detective cases and evidence puzzles","parameters":{}},
-{"name":"BF_GearMenu","status":true,"description":"Bitz Fantasy - Полная замена стандартного меню на меню-шестерёнку.","parameters":{}},
-{"name":"BF_QuestSystem","status":true,"description":"Bitz Fantasy — единый движок квестов, шагов, журнала и мини-приложений","parameters":{}},
 {"name":"BF_QuestConfig","status":true,"description":"Bitz Fantasy — единый редактируемый конфиг всех квестов","parameters":{}},
-{"name":"BF_RatCatch","status":true,"description":"Bitz Fantasy — BF_RatCatch. Puzzle mini-game: rats, baited mousetrap, vents, fan, valve, crates and visible airflow.","parameters":{}},
+{"name":"BF_QuestSystem","status":true,"description":"Bitz Fantasy — единый движок квестов, шагов, журнала и мини-приложений","parameters":{}},
+{"name":"BF_QuestMap","status":true,"description":"Bitz Fantasy — красивая карта-пергамент: местность, игрок, текущая цель и маршрут","parameters":{}},
 {"name":"BF_Inventory","status":true,"description":"Bitz Fantasy — Inventory / Bag UI. Adds a separate inventory button beside the journal and gear menu.","parameters":{}},
-{"name":"BF_QuestMap","status":true,"description":"Bitz Fantasy — красивая карта-пергамент: местность, игрок, текущая цель и маршрут","parameters":{}}
+{"name":"BF_GearMenu","status":true,"description":"Bitz Fantasy - Полная замена стандартного меню на меню-шестерёнку.","parameters":{}},
+{"name":"BF_RatCatch","status":true,"description":"Bitz Fantasy - Rat Catch v8. Fixed MV Bitmap error, clearer broom controls and reliable quest completion.","parameters":{}},
+{"name":"BF_Cheater_FULL","status":false,"description":"BitzFantasy — Разоблачение жулика v3.0 Full","parameters":{}},
+{"name":"BF_BrunoInterrogation_FULL","status":false,"description":"BitzFantasy — Допрос Бруно v3.0 Full","parameters":{}},
+{"name":"BF_Nitrogen_FULL","status":false,"description":"BitzFantasy — Мини-игра жидкого азота v3.0 Full","parameters":{}},
+{"name":"BF_CaseFiles","status":false,"description":"Bitz Fantasy — seven detective cases and evidence puzzles","parameters":{}}
 ];

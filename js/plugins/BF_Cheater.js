@@ -56,6 +56,7 @@ Scene_CheaterMini.prototype.pick=function(i){
 Scene_CheaterMini.prototype.success=function(){
  this.locked=true;
  if(CM.mapId===$gameMap.mapId()&&CM.eventId>0)$gameSelfSwitches.setValue([$gameMap.mapId(),CM.eventId,"A"],true);
+ if(window.BF_QuestSystem&&typeof window.BF_QuestSystem.miniSuccess==='function')window.BF_QuestSystem.miniSuccess();
  var z=new Sprite(ImageManager.loadSystem("CheaterMini/success"));z.anchor.x=.5;z.anchor.y=.5;z.x=Graphics.boxWidth/2;z.y=210;this.addChild(z);
  this.setStatus("Устройство найдено! Жулик разоблачён.");
  var t=new Sprite(new Bitmap(Graphics.boxWidth,70));t.y=260;t.bitmap.fontSize=28;t.bitmap.textColor="#9cff9c";t.bitmap.drawText("ДОКАЗАТЕЛЬСТВО НАЙДЕНО!",0,15,Graphics.boxWidth,40,"center");this.addChild(t);

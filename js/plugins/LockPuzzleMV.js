@@ -148,6 +148,7 @@
         // 1 = lock opened successfully; 0 = failed or cancelled.
         // Default for BitzFantasy is variable #0015 ("проход").
         if (SUCCESS_SWITCH > 0) $gameSwitches.setValue(SUCCESS_SWITCH, ok);
+        if(ok&&window.BF_QuestSystem&&typeof window.BF_QuestSystem.miniSuccess==='function')window.BF_QuestSystem.miniSuccess();
         if (FAILURE_SWITCH > 0) $gameSwitches.setValue(FAILURE_SWITCH, !ok);
         if (RESULT_VARIABLE > 0) $gameVariables.setValue(RESULT_VARIABLE, ok ? 1 : 0);
 

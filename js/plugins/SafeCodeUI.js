@@ -244,6 +244,7 @@
         if (this._digits === target) {
             $gameVariables.setValue(V_RESULT, 1);
             this._success = true;
+            if(window.BF_QuestSystem&&typeof window.BF_QuestSystem.miniSuccess==='function')window.BF_QuestSystem.miniSuccess();
             playOk();
             this.setStatus('ДОСТУП РАЗРЕШЁН  •  СЕЙФ ОТКРЫТ', '#71ff92');
             this.refreshDisplay();

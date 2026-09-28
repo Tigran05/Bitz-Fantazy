@@ -1,491 +1,670 @@
 /*:
- * @plugindesc Bitz Fantasy — единый движок квестов, шагов, журнала и мини-приложений
+ * @plugindesc Bitz Fantasy — квесты первого города + красивая книга Кати v3
  * @author ASTROLIT GAMES
  *
  * @help
- * Все квесты и их шаги редактируются ТОЛЬКО в BF_QuestConfig.js.
- * Этот плагин хранит состояние, рисует журнал и связывает мини-приложения
- * с текущим шагом квеста.
+ * Полностью самостоятельная система квестов для первого города Битц.
  *
- * ЕДИНСТВЕННЫЕ команды событий RPG Maker MV:
- *   BF_Quest start <id>
- *   BF_Quest step <id> <0-based step>
- *   BF_Quest next <id>
- *   BF_Quest complete <id>
- *   BF_Quest select <id>
- *   BF_Quest note <id>
- *   BF_Quest digit <id> <variableId>
- *   BF_Quest status <id>
- *   BF_Quest journal
- *   BF_Quest minigameStart <appId> [questId]
- *   BF_Quest minigameResult <SUCCESS|FAIL|CANCEL|COMPLETE>
+ * ЛОГИКА:
+ * Эйп -> Расспросить работников -> 3 независимых квеста.
+ * Бармен / Инженер / Слот-менеджер можно брать в любом порядке.
+ * После выполнения каждого квеста открывается одна цифра сейфа.
+ * После получения всех 3 цифр открывается сюжетная ветка дома Бруно.
  *
- * ЛОГИКА МИНИ-ПРИЛОЖЕНИЯ:
- *   1) При запуске приложение вызывает:
- *        BF_QuestSystem.minigameStart('APP_ID');
- *      Если передать второй аргумент, можно явно указать questId.
- *   2) При УСПЕХЕ приложение вызывает:
- *        BF_QuestSystem.minigameResult('SUCCESS');
- *   3) При ПРОВАЛЕ/ОТМЕНЕ ничего не меняет:
- *        BF_QuestSystem.minigameResult('FAIL');
- *        BF_QuestSystem.minigameResult('CANCEL');
- *   4) Для мгновенного завершения квеста:
- *        BF_QuestSystem.minigameResult('COMPLETE');
+ * Команды:
+ * BF_Quest start bartender
+ * BF_Quest start engineer
+ * BF_Quest start manager
+ * BF_Quest start house
+ * BF_Quest start passage
+ * BF_Quest start safe
+ * BF_Quest start evidence
  *
- * ВАЖНО:
- * - движок НЕ угадывает шаги по предметам, NPC, событиям или переменным;
- * - цифры НЕ заданы в коде: их создаёт обычное событие RPG Maker;
- * - BF_Quest digit только считывает уже выданную цифру и сохраняет её;
- * - завершение квеста вызывается отдельной командой complete;
- * - мини-приложение работает только с тем квестом и шагом, для которого было
- *   зафиксировано его начало. Это исключает путаницу при нескольких активных квестах.
+ * Завершение:
+ * BF_Quest complete bartender
+ * BF_Quest complete engineer
+ * BF_Quest complete manager
+ * BF_Quest complete house
+ * BF_Quest complete passage
+ * BF_Quest complete safe
+ * BF_Quest complete evidence
+ *
+ * Сюжет:
+ * BF_Quest intro
+ *
+ * Книга:
+ * BF_Quest journal
+ *
+ * Конфигурация квестов теперь находится в BF_QuestConfig.js
+ *
+ * Для выдачи информации в заметки:
+ * BF_Quest note <id>
+ *
+ * Для проверки:
+ * BF_Quest status <id>
+ *
+ * Цифры сохраняются в переменных:
+ * 11 — первая цифра (бармен)
+ * 12 — вторая цифра (инженер)
+ * 13 — третья цифра (менеджер)
+ *
+ * ВАЖНО: переменные сами по себе НЕ открывают информацию в книге.
+ * Цифра появляется только после завершения соответствующего квеста.
  */
-(function(){
-'use strict';
+(function() {
+    'use strict';
 
-var BF = window.BF_QuestSystem = window.BF_QuestSystem || {};
-if (BF.__questSystemV6Loaded) return;
-BF.__questSystemV6Loaded = true;
-BF.version = '6.0-clean-minigame';
+    var BF = window.BF_QuestSystem = window.BF_QuestSystem || {};
+    BF.version = '3.0';
 
-BF.config = function(){
-    return window.BF_QuestConfig || {QUESTS:{}, NOTES:{}};
-};
-BF.questsConfig = function(){ return BF.config().QUESTS || {}; };
-BF.notesConfig = function(){ return BF.config().NOTES || {}; };
-BF.QUESTS = BF.questsConfig();
-BF.NOTES = BF.notesConfig();
-BF.refreshConfigAliases = function(){
-    BF.QUESTS = BF.questsConfig();
-    BF.NOTES = BF.notesConfig();
-};
-BF.normalizeId = function(id){ return String(id == null ? '' : id).trim(); };
-BF.configFor = function(id){
-    id = BF.normalizeId(id);
-    return BF.questsConfig()[id] || null;
-};
-
-function Game_BFQuests(){ this.initialize.apply(this, arguments); }
-Game_BFQuests.prototype.initialize = function(){
-    this._data = {};
-    this._notes = {};
-    this._digits = {};
-    this._currentQuest = null;
-    this._selectedQuest = null;
-    this._minigame = null;
-};
-
-Game_BFQuests.prototype.validateState = function(){
-    var self=this;
-    if(!this._data || typeof this._data!=='object') this._data={};
-    if(!this._notes || typeof this._notes!=='object') this._notes={};
-    if(!this._digits || typeof this._digits!=='object') this._digits={};
-    if(this._currentQuest && !BF.configFor(this._currentQuest)) this._currentQuest=null;
-    if(this._selectedQuest && !BF.configFor(this._selectedQuest)) this._selectedQuest=null;
-    if(this._minigame && (!this._minigame.questId || !BF.configFor(this._minigame.questId))) this._minigame=null;
-    Object.keys(this._data).forEach(function(id){
-        var q=self._data[id], cfg=BF.configFor(id);
-        if(!cfg || !q || typeof q!=='object') return;
-        if(q.status!=='active' && q.status!=='completed' && q.status!=='available') q.status='available';
-        var max=Math.max(0,(cfg.steps||[]).length-1);
-        var n=Number(q.step);
-        if(!isFinite(n)) n=0;
-        q.step=Math.max(0,Math.min(Math.floor(n),max));
-    });
-};
-
-Game_BFQuests.prototype._finishWorkersChain = function(){
-    if(this.isStarted('intro') && !this.isCompleted('intro')) this.complete('intro');
-    if(!this.isStarted('house')) this.start('house');
-};
-
-Game_BFQuests.prototype.ensure = function(id){
-    id=BF.normalizeId(id);
-    var cfg=BF.configFor(id);
-    if(!cfg) return null;
-    if(!this._data[id]) this._data[id]={status:'available',step:0,startedAt:0,completedAt:0};
-    return this._data[id];
-};
-Game_BFQuests.prototype.get = function(id){ id=BF.normalizeId(id); return this._data[id] || null; };
-Game_BFQuests.prototype.status = function(id){ var q=this.get(id); return q?q.status:'locked'; };
-Game_BFQuests.prototype.isStarted = function(id){ var q=this.get(id); return !!q&&(q.status==='active'||q.status==='completed'); };
-Game_BFQuests.prototype.isCompleted = function(id){ var q=this.get(id); return !!q&&q.status==='completed'; };
-Game_BFQuests.prototype.workersComplete = function(){
-    return this.isCompleted('bartender') && this.isCompleted('engineer') && this.isCompleted('manager');
-};
-Game_BFQuests.prototype.checkPrerequisite = function(id){
-    id=BF.normalizeId(id);
-    var cfg=BF.configFor(id);
-    if(!cfg || !cfg.prerequisite) return true;
-    switch(String(cfg.prerequisite)){
-        case 'workersComplete': return this.workersComplete();
-        case 'houseComplete': return this.isCompleted('house');
-        case 'passageComplete': return this.isCompleted('passage');
-        case 'safeComplete': return this.isCompleted('safe');
-        default: return this.isCompleted(cfg.prerequisite);
-    }
-};
-Game_BFQuests.prototype.canStart = function(id){
-    id=BF.normalizeId(id);
-    var cfg=BF.configFor(id);
-    if(!cfg) return false;
-    if(id==='intro') return true;
-    if(id==='bartender'||id==='engineer'||id==='manager') return this.isStarted('intro');
-    return this.checkPrerequisite(id);
-};
-Game_BFQuests.prototype.start = function(id,step){
-    id=BF.normalizeId(id);
-    var cfg=BF.configFor(id), q=this.ensure(id);
-    if(!cfg || !q) return false;
-    if(q.status==='completed'){
-        this._currentQuest=id;
-        this._selectedQuest=id;
-        return true;
-    }
-    if(q.status==='active'){
-        if(step!==undefined) this.setStep(id,step);
-        this._currentQuest=id;
-        this._selectedQuest=id;
-        return true;
-    }
-    if(!this.canStart(id)) return false;
-    q.status='active';
-    var max=Math.max(0,(cfg.steps||[]).length-1);
-    var n=step===undefined?0:Number(step);
-    if(!isFinite(n)) n=0;
-    q.step=Math.max(0,Math.min(Math.floor(n),max));
-    q.startedAt=Date.now();
-    this._currentQuest=id;
-    this._selectedQuest=id;
-    return true;
-};
-Game_BFQuests.prototype.setStep = function(id,step){
-    id=BF.normalizeId(id);
-    var cfg=BF.configFor(id), q=this.get(id);
-    if(!cfg || !q || q.status!=='active') return false;
-    var max=Math.max(0,(cfg.steps||[]).length-1), n=Number(step);
-    if(!isFinite(n)) n=0;
-    q.step=Math.max(0,Math.min(Math.floor(n),max));
-    this._currentQuest=id;
-    this._selectedQuest=id;
-    return true;
-};
-Game_BFQuests.prototype.nextStep = function(id){
-    id=BF.normalizeId(id);
-    var cfg=BF.configFor(id), q=this.get(id);
-    if(!cfg || !q || q.status!=='active') return false;
-    var max=(cfg.steps||[]).length-1;
-    if(max<0 || q.step>=max) return this.complete(id);
-    q.step++;
-    this._currentQuest=id;
-    this._selectedQuest=id;
-    return true;
-};
-
-// -------------------------
-// Универсальный интерфейс мини-приложений
-// -------------------------
-Game_BFQuests.prototype._stepMinigameId = function(id,step){
-    var cfg=BF.configFor(id);
-    if(!cfg) return '';
-    var map=cfg.minigameByStep || cfg.minigames || {};
-    return map[String(step)] || map[step] || '';
-};
-Game_BFQuests.prototype._findQuestForMinigame = function(appId){
-    appId=String(appId||'');
-    var active=this.getActive(), selected=this.selectedQuest(), matches=[];
-    for(var i=0;i<active.length;i++){
-        var id=active[i], q=this.get(id);
-        if(q && this._stepMinigameId(id,q.step)===appId) matches.push(id);
-    }
-    if(selected && matches.indexOf(selected)>=0) return selected;
-    if(matches.length===1) return matches[0];
-    return selected || (active.length?active[0]:null);
-};
-Game_BFQuests.prototype.minigameStart = function(appId,questId){
-    appId=String(appId||'').trim();
-    var id=questId ? BF.normalizeId(questId) : this._findQuestForMinigame(appId);
-    if(!appId || !id) return false;
-    var q=this.get(id);
-    if(!q || q.status!=='active') return false;
-    var configured=this._stepMinigameId(id,q.step);
-    if(configured && configured!==appId) return false;
-    this._minigame={appId:appId,questId:id,step:q.step,startedAt:Date.now()};
-    this._currentQuest=id;
-    this._selectedQuest=id;
-    return true;
-};
-Game_BFQuests.prototype.minigameResult = function(result,questId){
-    var r=String(result||'').toUpperCase();
-    var ctx=this._minigame;
-    var id=questId ? BF.normalizeId(questId) : (ctx ? ctx.questId : this.selectedQuest());
-    if(!id) return false;
-    var q=this.get(id);
-    if(!q || q.status!=='active') { this._minigame=null; return false; }
-    if(ctx && ctx.questId===id && q.step!==ctx.step) {
-        this._minigame=null;
-        return false;
-    }
-    if(r==='FAIL' || r==='CANCEL') { this._minigame=null; return false; }
-    var ok=false;
-    if(r==='SUCCESS') ok=this.nextStep(id);
-    else if(r==='COMPLETE') ok=this.complete(id);
-    this._minigame=null;
-    return ok;
-};
-
-Game_BFQuests.prototype.captureDigit = function(id,variableId){
-    id=BF.normalizeId(id);
-    var cfg=BF.configFor(id);
-    if(!cfg) return false;
-    var v=Number(variableId || cfg.digitVariable || 0);
-    if(!v || !$gameVariables) return false;
-    var digit=Number($gameVariables.value(v));
-    if(!isFinite(digit)) return false;
-    this._digits[id]=digit;
-    this._notes['digit_'+id]=String(cfg.digitNote || 'Цифра: {digit}').replace(/\{digit\}/g,String(digit));
-    return true;
-};
-
-Game_BFQuests.prototype.complete = function(id){
-    id=BF.normalizeId(id);
-    var cfg=BF.configFor(id), q=this.get(id);
-    if(!cfg || !q || q.status!=='active') return q && q.status==='completed';
-
-    // Сначала фиксируем цифру, пока квест ещё активен.
-    if(cfg.digitVariable) this.captureDigit(id,cfg.digitVariable);
-
-    q.status='completed';
-    q.step=Math.max(0,(cfg.steps||[]).length-1);
-    q.completedAt=Date.now();
-    if(cfg.note) this._notes[id]=cfg.note;
-    if(id==='intro'){
-        if(BF.notesConfig().ape) this._notes.ape=BF.notesConfig().ape;
-        if(BF.notesConfig().workers) this._notes.workers=BF.notesConfig().workers;
-    }
-    if(id==='house' && BF.notesConfig().house) this._notes.house=BF.notesConfig().house;
-    if(id==='safe' && BF.notesConfig().accounting) this._notes.accounting=BF.notesConfig().accounting;
-
-    if(this.workersComplete()) this._finishWorkersChain();
-    if(id==='house' && !this.isStarted('passage')) this.start('passage');
-    if(id==='passage' && !this.isStarted('safe')) this.start('safe');
-    if(id==='safe' && !this.isStarted('evidence')) this.start('evidence');
-
-    if(this._minigame && this._minigame.questId===id) this._minigame=null;
-    if(this._currentQuest===id) this._currentQuest=null;
-    if(this._selectedQuest===id) this._selectedQuest=null;
-    return true;
-};
-Game_BFQuests.prototype.addNote = function(id){
-    id=BF.normalizeId(id);
-    var notes=BF.notesConfig();
-    if(notes[id]) this._notes[id]=notes[id];
-    return !!notes[id];
-};
-Game_BFQuests.prototype.selectQuest = function(id){
-    id=BF.normalizeId(id);
-    var q=this.get(id);
-    if(!q || q.status!=='active') return false;
-    this._selectedQuest=id;
-    this._currentQuest=id;
-    return true;
-};
-Game_BFQuests.prototype.selectedQuest = function(){
-    var id=BF.normalizeId(this._selectedQuest || this._currentQuest);
-    if(id){
-        var q=this.get(id);
-        if(q && q.status==='active') return id;
-    }
-    var active=this.getActive();
-    return active.length?active[0]:null;
-};
-Game_BFQuests.prototype.getActive = function(){
-    var out=[],seen={},self=this;
-    Object.keys(this._data||{}).forEach(function(id){
-        var q=self._data[id];
-        if(!q || q.status!=='active' || !BF.configFor(id) || seen[id]) return;
-        seen[id]=true; out.push(id);
-    });
-    return out;
-};
-Game_BFQuests.prototype.getCompleted = function(){
-    var out=[],seen={},self=this;
-    Object.keys(this._data||{}).forEach(function(id){
-        var q=self._data[id];
-        if(!q || q.status!=='completed' || !BF.configFor(id) || seen[id]) return;
-        seen[id]=true; out.push(id);
-    });
-    return out;
-};
-Game_BFQuests.prototype.getStepText = function(id){
-    id=BF.normalizeId(id);
-    var cfg=BF.configFor(id),q=this.get(id);
-    if(!cfg || !q || !cfg.steps || !cfg.steps.length) return '';
-    return String(cfg.steps[q.step] || '');
-};
-Game_BFQuests.prototype.getDigits=function(){ return this._digits||{}; };
-
-window.Game_BFQuests=Game_BFQuests;
-window.$gameBFQuests=window.$gameBFQuests||null;
-BF.game=function(){
-    if(!window.$gameBFQuests || typeof window.$gameBFQuests.start!=='function') window.$gameBFQuests=new Game_BFQuests();
-    if(typeof window.$gameBFQuests.validateState==='function') window.$gameBFQuests.validateState();
-    return window.$gameBFQuests;
-};
-BF.minigameStart=function(appId,questId){ return BF.game().minigameStart(appId,questId); };
-BF.minigameResult=function(result,questId){ return BF.game().minigameResult(result,questId); };
-window.BF_QuestSystem.minigameStart=BF.minigameStart;
-window.BF_QuestSystem.minigameResult=BF.minigameResult;
-
-// -------------------------
-// Сохранение / загрузка
-// -------------------------
-if(!DataManager.__bfQuestSavePatch){
-    var _createGameObjects=DataManager.createGameObjects;
-    DataManager.createGameObjects=function(){ _createGameObjects.call(this); window.$gameBFQuests=new Game_BFQuests(); };
-    var _makeSaveContents=DataManager.makeSaveContents;
-    DataManager.makeSaveContents=function(){ var c=_makeSaveContents.call(this); c.bfQuests=window.$gameBFQuests; return c; };
-    var _extractSaveContents=DataManager.extractSaveContents;
-    DataManager.extractSaveContents=function(c){
-        _extractSaveContents.call(this,c);
-        window.$gameBFQuests=c&&c.bfQuests?c.bfQuests:new Game_BFQuests();
-        if(window.$gameBFQuests.validateState) window.$gameBFQuests.validateState();
-    };
-    DataManager.__bfQuestSavePatch=true;
-}
-
-// -------------------------
-// Plugin Commands
-// -------------------------
-function executeCommand(args){
-    args=args||[];
-    var cmd=String(args[0]||'').toLowerCase();
-    var id=String(args[1]||'').trim();
-    var game=BF.game();
-    if(cmd==='start'){ game.start(id); return; }
-    if(cmd==='step'){ game.setStep(id,Number(args[2]||0)); return; }
-    if(cmd==='next'){ game.nextStep(id); return; }
-    if(cmd==='complete'){ game.complete(id); return; }
-    if(cmd==='select'){ game.selectQuest(id); return; }
-    if(cmd==='note'){ game.addNote(id); return; }
-    if(cmd==='digit'){ game.captureDigit(id,Number(args[2]||0)); return; }
-    if(cmd==='status'){ console.log('BF_Quest',id,game.status(id),game.get(id)); return; }
-    if(cmd==='journal'){ SceneManager.push(Scene_BFJournal); return; }
-    if(cmd==='minigamestart'){
-        game.minigameStart(id,args[2]);
-        return;
-    }
-    if(cmd==='minigameresult'){
-        game.minigameResult(String(id||'').toUpperCase());
-        return;
-    }
-}
-
-// -------------------------
-// Journal UI
-// -------------------------
-function Window_BFJournalText(){ this.initialize.apply(this,arguments); }
-Window_BFJournalText.prototype=Object.create(Window_Base.prototype);
-Window_BFJournalText.prototype.constructor=Window_BFJournalText;
-Window_BFJournalText.prototype.initialize=function(x,y,w,h,mode){
-    Window_Base.prototype.initialize.call(this,x,y,w,h);
-    this.opacity=0; this.backOpacity=0; this._mode=mode; this.refresh();
-};
-Window_BFJournalText.prototype.setMode=function(mode){ if(this._mode!==mode){this._mode=mode;this.refresh();} };
-Window_BFJournalText.prototype.refresh=function(){
-    this.contents.clear();
-    this.contents.fontFace='Georgia, "Times New Roman", serif';
-    this.contents.fontBold=false; this.contents.outlineWidth=0;
-    var game=BF.game(), self=this;
-    var ox=this._bookX||0, oy=this._bookY||0, bsx=this._bookScaleX||1, bsy=this._bookScaleY||1;
-    function X(v){return ox+v*bsx;} function Y(v){return oy+v*bsy;} function W(v){return v*bsx;}
-    function heading(win,text,x,y,w){win.contents.fontSize=32;win.contents.fontBold=true;win.changeTextColor('#6b3e1c');win.drawText(text,X(x),Y(y),W(w),'center');win.contents.fontBold=false;}
-    function title(win,text,x,y,w){win.contents.fontSize=25;win.contents.fontBold=true;win.changeTextColor('#4a2814');win.drawText(text,X(x),Y(y),W(w),'left');win.contents.fontBold=false;}
-    function body(win,text,x,y,w,a){win.contents.fontSize=25;win.contents.fontBold=false;win.changeTextColor('#4d301d');win.drawText(text,X(x),Y(y),W(w),a||'left');}
-    function wrapPx(win,text,maxWidth){var words=String(text==null?'':text).split(/\s+/),lines=[],line='';words.forEach(function(word){if(!word)return;var t=line?line+' '+word:word;if(line&&win.contents.measureTextWidth(t)>maxWidth){lines.push(line);line=word;}else line=t;});if(line)lines.push(line);return lines;}
-    function wrapped(win,text,x,y,w,h){var yy=y;win.contents.fontSize=25;wrapPx(win,text,W(w)).forEach(function(line){body(win,line,x,yy,w,'left');yy+=h;});return yy;}
-    var L=92,LW=500,R=690,RW=455;
-    if(this._mode==='active'){
-        heading(this,'ТЕКУЩИЕ ДЕЛА',L,72,LW);heading(this,'ЗАПИСЬ РАССЛЕДОВАНИЯ',R,72,RW);
-        var active=game.getActive();
-        if(!active.length){title(this,'Пока нет текущих дел.',L,145,LW);body(this,'Когда Катя получит новое дело,',L,190,LW,'center');body(this,'оно появится здесь.',L,220,LW,'center');}
-        else{
-            var ly=135;
-            active.forEach(function(id){var cfg=BF.configFor(id),q=game.get(id);if(!cfg||!q)return;title(self,'• '+cfg.title,L,ly,LW);ly+=34;ly=wrapped(self,(cfg.steps||[])[q.step]||'',L,ly,LW,28)+16;if(ly<590){self.contents.paintOpacity=70;self.contents.fillRect(X(L),Y(ly),W(LW),1,'#8f6a42');self.contents.paintOpacity=255;ly+=18;}});
+    // =========================
+    // РЕДАКТИРУЕМЫЕ КВЕСТЫ
+    // =========================
+    BF.QUESTS = (window.BF_QuestConfig && window.BF_QuestConfig.QUESTS) || {};
+    BF.NOTES = (window.BF_QuestConfig && window.BF_QuestConfig.NOTES) || {};
+    BF.configFor = function(id) { return BF.QUESTS[String(id||'').trim()] || null; };
+    BF.refreshConfigAliases = function() {
+        if(window.BF_QuestConfig) {
+            BF.QUESTS = window.BF_QuestConfig.QUESTS || BF.QUESTS || {};
+            BF.NOTES = window.BF_QuestConfig.NOTES || BF.NOTES || {};
         }
-        var selected=game.selectedQuest();
-        if(!selected){title(this,'Запись появится после получения дела.',R,145,RW);}
-        else{
-            var sc=BF.configFor(selected),sq=game.get(selected); if(sc&&sq){
-                title(this,sc.title,R,142,RW);var ry=wrapped(this,sc.description||'',R,180,RW,28); 
-                this.contents.paintOpacity=70;this.contents.fillRect(X(R),Y(ry+4),W(RW),1,'#8f6a42');this.contents.paintOpacity=255;
-                if(sc.steps&&sc.steps.length){title(this,'Текущий шаг',R,ry+30,RW);wrapped(this,sc.steps[sq.step]||'',R,ry+65,RW,28);}
+        return BF;
+    };
+
+    // ВАЖНО: система не должна становиться пустой, если BF_QuestConfig
+    // случайно стоит после этого плагина или вообще не включён.
+    // В таком случае используем встроенную конфигурацию первого города.
+    if (!BF.QUESTS.intro) {
+        BF.QUESTS = {
+            intro: {title:'Расспросить работников казино', description:'Эйп попросил расспросить работников казино.', steps:[], note:'Эйп попросил расспросить работников казино.'},
+            bartender: {title:'Проблема бармена', description:'Помочь бармену разобраться с крысами в подвале казино.', steps:['Избавиться от крыс в подвале','Вернуться к бармену'], digitVariable:11, digitMode:'random', note:'Первая цифра сейфа Бруно'},
+            engineer: {title:'Проблема инженера', description:'Помочь инженеру охладить перегревающуюся серверную.', steps:['Найти жидкий азот','Отдать жидкий азот инженеру'], digitVariable:12, digit:7, note:'Вторая цифра сейфа Бруно: 7'},
+            manager: {title:'Подозрительный шулер', description:'Помочь слот-менеджеру разоблачить шулера.', steps:['Расследовать действия шулера','Найти доказательство','Вернуться к слот-менеджеру'], digitVariable:13, digit:4, note:'Третья цифра сейфа Бруно: 4'},
+            house: {title:'Найти дом Бруно', description:'После получения трёх цифр найти дом Бруно.', steps:['Найти дом Бруно']},
+            passage: {title:'Тайный проход', description:'Найти потайной проход в подвал.', steps:['Исследовать дом Бруно','Найти потайной проход в подвал']},
+            safe: {title:'Сейф Бруно', description:'Открыть сейф кодом из трёх цифр.', steps:['Найти сейф','Ввести код сейфа','Забрать бухгалтерию']},
+            evidence: {title:'Предъявить доказательства Бруно', description:'Вернуться к Бруно и предъявить бухгалтерию.', steps:['Вернуться к Бруно','Предъявить бухгалтерию как доказательство']}
+        };
+        BF.NOTES = {ape:'Эйп попросил Катю, Алеко и Личи разобраться в конфликте с Бруно.', workers:'Нужно поговорить с барменом, инженером и слот-менеджером.', house:'После получения трёх цифр нужно найти дом Бруно.', accounting:'Бухгалтерия Бруно — главная улика расследования.'};
+    }
+
+    function Game_BFQuests() { this.initialize.apply(this, arguments); }
+    Game_BFQuests.prototype.initialize = function() {
+        this._data = {};
+        this._notes = {};
+        this._storyFlags = {};
+        this._digits = {};
+        this._currentQuest = null;
+        this._selectedQuest = null;
+        this._minigame = null;
+    };
+    Game_BFQuests.prototype.ensure = function(id) {
+        if (!this._data[id]) {
+            this._data[id] = { status: 'available', step: 0, startedAt: 0, completedAt: 0 };
+        }
+        return this._data[id];
+    };
+    Game_BFQuests.prototype.get = function(id) { return this._data[id] || null; };
+    Game_BFQuests.prototype.status = function(id) { return this.get(id) ? this.get(id).status : 'locked'; };
+    Game_BFQuests.prototype.isStarted = function(id) { var q=this.get(id); return !!q && (q.status==='active'||q.status==='completed'); };
+    Game_BFQuests.prototype.isCompleted = function(id) { var q=this.get(id); return !!q && q.status==='completed'; };
+    Game_BFQuests.prototype.workersComplete = function() { return this.isCompleted('bartender') && this.isCompleted('engineer') && this.isCompleted('manager'); };
+    Game_BFQuests.prototype.canStart = function(id) {
+        var q = BF.QUESTS[id]; if (!q) return false;
+        if (id === 'intro') return true;
+        if (id === 'bartender' || id === 'engineer' || id === 'manager') return this.isStarted('intro');
+        if (id === 'house') return this.workersComplete();
+        if (id === 'passage') return this.isCompleted('house');
+        if (id === 'safe') return this.isCompleted('passage');
+        if (id === 'evidence') return this.isCompleted('safe');
+        return true;
+    };
+    // Start a quest. Independent worker quests can be started in any order.
+    Game_BFQuests.prototype.start = function(id) {
+        var cfg = BF.QUESTS[id];
+        if (!cfg) return false;
+        var q = this.ensure(id);
+        if (q.status === 'completed') return true;
+        if (q.status === 'active') {
+            this._currentQuest = id;
+            this._selectedQuest = id;
+            return true;
+        }
+        if (!this.canStart(id)) return false;
+        q.status = 'active';
+        q.step = 0;
+        q.startedAt = Date.now();
+        this._currentQuest = id;
+        this._selectedQuest = id;
+        if (id === 'intro' && BF.NOTES.ape) this._notes.ape = BF.NOTES.ape;
+        return true;
+    };
+
+    Game_BFQuests.prototype.syncIntro = function() {
+        var intro=this.get('intro');
+        if(!intro || intro.status!=='active') return;
+        // ВАЖНО: общий квест не содержит порядковых шагов.
+        // Игрок сам выбирает любого из трёх работников.
+        intro.step=0;
+        if (this.workersComplete()) this.complete('intro');
+    };
+
+    Game_BFQuests.prototype.complete = function(id) {
+        var cfg=BF.QUESTS[id]; if(!cfg) return false;
+        var q=this.ensure(id);
+        if(q.status==='completed') return true;
+        if(!this.canStart(id) && q.status!=='active') return false;
+        q.status='completed'; q.step=Math.max(0,(cfg.steps||[]).length-1); q.completedAt=Date.now();
+        // Digit handling: for random NPC rewards, always use the actual value
+        // already generated by the RPG Maker event, not a hard-coded fallback.
+        if (cfg.digitVariable) {
+            var actualDigit = null;
+            if (cfg.digitMode === 'random' && typeof $gameVariables !== 'undefined') {
+                var vv = Number($gameVariables.value(cfg.digitVariable));
+                if (isFinite(vv) && vv >= 0 && vv <= 9) actualDigit = vv;
+            }
+            if (actualDigit == null && cfg.digit != null) actualDigit = Number(cfg.digit);
+            if (actualDigit != null && isFinite(actualDigit)) {
+                this._digits[id] = actualDigit;
+                $gameVariables.setValue(cfg.digitVariable, actualDigit);
+                var digitLabels = { bartender:'Первая цифра сейфа Бруно', engineer:'Вторая цифра сейфа Бруно', manager:'Третья цифра сейфа Бруно' };
+                this._notes['digit_'+id] = (digitLabels[id] || 'Цифра сейфа') + ': ' + actualDigit;
             }
         }
-    } else if(this._mode==='notes'){
-        heading(this,'ЛИЧНЫЕ ЗАМЕТКИ',L,72,LW);heading(this,'НАЙДЕННЫЕ СВЕДЕНИЯ',R,72,RW);
-        var notes=game._notes||{},keys=Object.keys(notes);
-        if(!keys.length){title(this,'Записей пока нет.',L,145,LW);}else{var ny=140;keys.forEach(function(k){ny=wrapped(self,notes[k],L,ny,LW,28)+10;});}
-        body(this,'Здесь появляются только сведения,',R,150,RW,'left');body(this,'которые Катя уже узнала',R,182,RW,'left');body(this,'во время расследования.',R,214,RW,'left');
-    } else {
-        heading(this,'ЗАВЕРШЁННЫЕ ДЕЛА',L,72,LW);heading(this,'АРХИВ РАССЛЕДОВАНИЯ',R,72,RW);
-        var done=game.getCompleted(); if(!done.length) title(this,'Пока ничего не завершено.',L,145,LW); else {var dy=145;done.forEach(function(id){var cfg=BF.configFor(id);if(!cfg)return;title(self,'✓ '+cfg.title,L,dy,LW);dy+=40;});}
-        body(this,'Завершённые дела остаются',R,175,RW,'center');body(this,'в архиве Кати.',R,207,RW,'center');
-    }
-};
-
-function Scene_BFJournal(){this.initialize.apply(this,arguments);}
-Scene_BFJournal.prototype=Object.create(Scene_Base.prototype);
-Scene_BFJournal.prototype.constructor=Scene_BFJournal;
-Scene_BFJournal.prototype.drawBFTabs=function(bitmap){
-    var b=bitmap;b.clear();b.fontFace='Georgia, "Times New Roman", serif';b.fontBold=true;b.fontSize=24;b.textColor='#f2dfb4';b.outlineColor='#2d1208';b.outlineWidth=3;
-    var sx=this._bookScaleX||1,sy=this._bookScaleY||1,bx=this._bookX||0,by=this._bookY||0;
-    var tabs=[{x:1162,y:108,w:106,h:88,label:'ДЕЛА'},{x:1162,y:207,w:106,h:88,label:'ЗАМЕТКИ'},{x:1162,y:307,w:106,h:88,label:'АРХИВ'}];
-    function X(v){return Math.round(bx+v*sx);}function Y(v){return Math.round(by+v*sy);}function SW(v){return Math.round(v*sx);}function SH(v){return Math.round(v*sy);}
-    tabs.forEach(function(t){b.drawText(t.label,X(t.x),Y(t.y)+Math.round(28*sy),SW(t.w),Math.max(28,Math.round(34*sy)),'center');});
-    this._tabHit={tabs:tabs.map(function(t){return{x:X(t.x),y:Y(t.y),w:SW(t.w),h:SH(t.h)};}),closeX:X(1184),closeY:Y(8),closeW:SW(78),closeH:SH(82)};
-};
-Scene_BFJournal.prototype.create=function(){
-    BF.refreshConfigAliases();Scene_Base.prototype.create.call(this);this._mode='active';
-    this._dim=new Sprite(new Bitmap(Graphics.boxWidth,Graphics.boxHeight));this._dim.bitmap.fillAll('rgba(0,0,0,0.18)');this.addChild(this._dim);
-    var W=1280,H=720, sx=Math.min(1,Graphics.boxWidth/W), sy=Math.min(1,Graphics.boxHeight/H), scale=Math.min(sx,sy);
-    this._bookX=Math.round((Graphics.boxWidth-W*scale)/2);this._bookY=Math.round((Graphics.boxHeight-H*scale)/2);this._bookScaleX=scale;this._bookScaleY=scale;this._bookScale=scale;
-    this._book=new Sprite(ImageManager.loadPicture('BFJournal/JournalBook'));this._book.anchor.set(0,0);this._book.scale.set(scale,scale);this._book.x=this._bookX;this._book.y=this._bookY;this.addChild(this._book);
-    this._bfTabs=new Sprite(new Bitmap(Graphics.boxWidth,Graphics.boxHeight));this.drawBFTabs(this._bfTabs.bitmap);this.addChild(this._bfTabs);
-    this._text=new Window_BFJournalText(0,0,Graphics.boxWidth,Graphics.boxHeight,'active');this._text.opacity=0;this._text.backOpacity=0;this._text.padding=0;
-    this._text._bookX=this._bookX;this._text._bookY=this._bookY;this._text._bookScaleX=scale;this._text._bookScaleY=scale;this._text.createContents();this._text.refresh();this.addChild(this._text);
-};
-Scene_BFJournal.prototype.update=function(){
-    Scene_Base.prototype.update.call(this);
-    if(Input.isTriggered('cancel')||TouchInput.isCancelled()){SceneManager.pop();return;}
-    if(!TouchInput.isTriggered())return;
-    var x=TouchInput.x,y=TouchInput.y,hit=this._tabHit;
-    if(hit&&x>=hit.closeX&&x<=hit.closeX+hit.closeW&&y>=hit.closeY&&y<=hit.closeY+hit.closeH){SceneManager.pop();return;}
-    if(hit&&hit.tabs){
-        if(y>=hit.tabs[0].y&&y<hit.tabs[0].y+hit.tabs[0].h&&x>=hit.tabs[0].x&&x<=hit.tabs[0].x+hit.tabs[0].w){this.setMode('active');return;}
-        if(y>=hit.tabs[1].y&&y<hit.tabs[1].y+hit.tabs[1].h&&x>=hit.tabs[1].x&&x<=hit.tabs[1].x+hit.tabs[1].w){this.setMode('notes');return;}
-        if(y>=hit.tabs[2].y&&y<hit.tabs[2].y+hit.tabs[2].h&&x>=hit.tabs[2].x&&x<=hit.tabs[2].x+hit.tabs[2].w){this.setMode('done');return;}
-    }
-    if(this._mode==='active'){
-        var active=BF.game().getActive(),ly=132;
-        for(var i=0;i<active.length;i++){
-            var cfg=BF.configFor(active[i]),q=BF.game().get(active[i]);if(!cfg||!q)continue;
-            var step=String((cfg.steps||[])[q.step]||''), lines=Math.max(1,Math.ceil(step.length/44)), h=Math.max(54,lines*28+34);
-            if(y>=ly&&y<ly+h&&x>=80&&x<=625){BF.game().selectQuest(active[i]);this._text.refresh();return;}
-            ly+=h+18;if(ly>620)break;
-        }
-    }
-};
-Scene_BFJournal.prototype.setMode=function(mode){this._mode=mode;this._text.setMode(mode);};
-window.Scene_BFJournal=Scene_BFJournal;
-
-if(!Game_Interpreter.prototype.__bfQuestSystemCommandPatchV6){
-    var _bfPrevPluginCommand=Game_Interpreter.prototype.pluginCommand;
-    Game_Interpreter.prototype.pluginCommand=function(command,args){
-        if(String(command||'').toLowerCase()==='bf_quest'){executeCommand(args);return;}
-        return _bfPrevPluginCommand.call(this,command,args);
+        if(cfg.note && !this._notes['digit_'+id]) this._notes['digit_'+id]=cfg.note;
+        if(id==='intro' && BF.NOTES.workers) this._notes.workers = BF.NOTES.workers;
+        if(id==='house' && BF.NOTES.house) this._notes.house = BF.NOTES.house;
+        if(id==='safe' && BF.NOTES.accounting) this._notes.accounting = BF.NOTES.accounting;
+        if(id==='intro' && BF.NOTES.ape) this._notes.ape = BF.NOTES.ape;
+        if(this.workersComplete() && id!=='house' && !this.isCompleted('house')) this.start('house');
+        if(id==='house' && !this.isCompleted('passage')) this.start('passage');
+        if(id==='passage' && !this.isCompleted('safe')) this.start('safe');
+        if(id==='safe' && !this.isCompleted('evidence')) this.start('evidence');
+        if(this._currentQuest===id) this._currentQuest=null;
+        if(this._selectedQuest===id) this._selectedQuest=null;
+        this._minigame=null;
+        return true;
     };
-    Game_Interpreter.prototype.__bfQuestSystemCommandPatchV6=true;
-}
+    Game_BFQuests.prototype.setStep = function(id, step) {
+        var q=this.get(id); if(!q || q.status!=='active') return false;
+        var requested = Number(step);
+        if (!isFinite(requested)) requested = 0;
+        // Existing story events use a larger numeric marker when the NPC hands over
+        // the safe digit (e.g. bartender step 2). Capture the real digit at that moment
+        // even though the visible quest still has only the 'return to NPC' step.
+        var digitVars = { bartender:11, engineer:12, manager:13 };
+        if (digitVars[id] && requested >= 1) this.captureDigit(id, digitVars[id]);
+        var max=Math.max(0,(BF.QUESTS[id].steps||[]).length-1);
+        q.step=Math.max(0,Math.min(requested,max)); this._currentQuest=id; this._selectedQuest=id; return true;
+    };
+    Game_BFQuests.prototype.nextStep = function(id) {
+        var q=this.get(id); if(!q || q.status!=='active') return false;
+        var max=(BF.QUESTS[id].steps||[]).length-1;
+        if(q.step>=max) return this.complete(id);
+        q.step++; return true;
+    };
+    // Compatibility / selection API used by the journal and mini-games.
+    Game_BFQuests.prototype.selectQuest = function(id) {
+        id=String(id||'').trim();
+        var q=this.get(id);
+        if(!q || q.status!=='active') return false;
+        this._currentQuest=id;
+        this._selectedQuest=id;
+        return true;
+    };
+    Game_BFQuests.prototype.selectedQuest = function() {
+        var id=this._selectedQuest || this._currentQuest;
+        var q=id ? this.get(id) : null;
+        if(q && q.status==='active') return id;
+        var a=this.getActive();
+        return a.length ? a[0] : null;
+    };
+    Game_BFQuests.prototype.minigameStart = function(appId, questId) {
+        appId=String(appId||'').trim();
+        var id=questId ? String(questId).trim() : this.selectedQuest();
+        if(!appId || !id) return false;
+        var q=this.get(id);
+        if(!q || q.status!=='active') return false;
+        this._minigame={appId:appId,questId:id,step:q.step};
+        this._selectedQuest=id;
+        this._currentQuest=id;
+        return true;
+    };
+    Game_BFQuests.prototype.minigameResult = function(result) {
+        var r=String(result||'').toUpperCase();
+        var ctx=this._minigame;
+        if(!ctx) return false;
+        var q=this.get(ctx.questId);
+        if(!q || q.status!=='active' || q.step!==ctx.step) { this._minigame=null; return false; }
+        if(r!=='SUCCESS') { this._minigame=null; return false; }
+
+        // On successful completion, switch the exact RPG Maker event to its return page.
+        // This keeps the story event independent from the quest data and prevents
+        // the NPC from repeating the 'go catch rats' dialogue.
+        var cfg = BF.QUESTS[ctx.questId];
+        var sw = cfg && cfg.successSwitchByStep ? cfg.successSwitchByStep[String(ctx.step)] : null;
+        if(sw && window.$gameSelfSwitches) {
+            $gameSelfSwitches.setValue([Number(sw.mapId), Number(sw.eventId), String(sw.selfSwitch || 'A')], true);
+        }
+
+        this._minigame=null;
+        return this.nextStep(ctx.questId);
+    };
+    Game_BFQuests.prototype.addNote = function(id) { if(BF.NOTES[id]) this._notes[id]=BF.NOTES[id]; };
+    Game_BFQuests.prototype.getActive = function() { var a=[],self=this,workerActive=(this.status('bartender')==='active'||this.status('engineer')==='active'||this.status('manager')==='active'); Object.keys(BF.QUESTS).forEach(function(id){ if(id==='intro' && workerActive) return; if(self.isStarted(id)&&self.status(id)==='active')a.push(id); }); return a; };
+    Game_BFQuests.prototype.getCompleted = function() { var a=[],self=this; Object.keys(BF.QUESTS).forEach(function(id){if(self.isCompleted(id))a.push(id);}); return a; };
+    Game_BFQuests.prototype.captureDigit = function(id, varId) {
+        var q = this.get(id);
+        if (!q || (q.status !== 'active' && q.status !== 'completed')) return false;
+        if (Number(q.step) < 1 || typeof $gameVariables === 'undefined') return false;
+        var value = Number($gameVariables.value(Number(varId)));
+        if (!isFinite(value) || value < 0 || value > 9 || Math.floor(value) !== value) return false;
+        var labels = { bartender:'Первая цифра сейфа Бруно', engineer:'Вторая цифра сейфа Бруно', manager:'Третья цифра сейфа Бруно' };
+        this._digits[id] = value;
+        this._notes['digit_' + id] = (labels[id] || 'Цифра сейфа') + ': ' + value;
+        return true;
+    };
+    Game_BFQuests.prototype.syncDigitsFromVariables = function() {
+        var vars = { bartender:11, engineer:12, manager:13 };
+        var self = this;
+        Object.keys(vars).forEach(function(id) { self.captureDigit(id, vars[id]); });
+        return this._digits || {};
+    };
+    Game_BFQuests.prototype.getDigits = function() { return this._digits || {}; };
+
+    // Глобальный контейнер. Не зависит от порядка загрузки/старого сохранения.
+    // В RPG Maker MV некоторые проекты вызывают plugin command до createGameObjects,
+    // поэтому нельзя безусловно обращаться к $gameBFQuests.
+    window.$gameBFQuests = window.$gameBFQuests || null;
+    BF.game = function() {
+        if (!window.$gameBFQuests || typeof window.$gameBFQuests.start !== 'function') {
+            window.$gameBFQuests = new Game_BFQuests();
+        }
+        return window.$gameBFQuests;
+    };
+    BF.minigameStart = function(appId, questId) { return BF.game().minigameStart(appId, questId); };
+    BF.minigameResult = function(result) { return BF.game().minigameResult(result); };
+
+    // Save/load integration
+    var _createGameObjects = DataManager.createGameObjects;
+    DataManager.createGameObjects = function() { _createGameObjects.call(this); window.$gameBFQuests=new Game_BFQuests(); };
+    var _makeSaveContents = DataManager.makeSaveContents;
+    DataManager.makeSaveContents = function() { var c=_makeSaveContents.call(this); c.bfQuests=window.$gameBFQuests; return c; };
+    var _extractSaveContents = DataManager.extractSaveContents;
+    DataManager.extractSaveContents = function(c) { _extractSaveContents.call(this,c); window.$gameBFQuests=c.bfQuests||new Game_BFQuests(); };
+
+    function pluginCommand(args) {
+        var cmd=(args[0]||'').toLowerCase();
+        var id=args[1];
+        if(cmd==='start') { BF.game().start(id); }
+        else if(cmd==='complete') { BF.game().complete(id); }
+        else if(cmd==='next') { BF.game().nextStep(id); }
+        else if(cmd==='step') { BF.game().setStep(id,Number(args[2]||0)); }
+        else if(cmd==='select') { BF.game().selectQuest(id); }
+        else if(cmd==='minigamestart') { BF.game().minigameStart(id,args[2]); }
+        else if(cmd==='minigameresult') { BF.game().minigameResult(id); }
+        else if(cmd==='note') { BF.game().addNote(id); }
+        else if(cmd==='intro') {
+            var startedIntro = BF.game().start('intro');
+            if (startedIntro || BF.game().isStarted('intro')) BF.game().addNote('ape');
+        }
+        else if(cmd==='journal' || cmd==='book') { SceneManager.push(Scene_BFJournal); }
+        else if(cmd==='status') { console.log('BF Quest',id,BF.game().status(id)); }
+    }
+    var _pluginCommand = Game_Interpreter.prototype.pluginCommand;
+    Game_Interpreter.prototype.pluginCommand = function(command,args) {
+        _pluginCommand.call(this,command,args);
+        if(String(command).toLowerCase()==='bf_quest') pluginCommand(args);
+    };
+
+    // =========================
+    // КРАСИВАЯ КНИГА КАТИ
+    // =========================
+    // На карте показывается только картинка книги, без текста.
+    function Sprite_BFBookIcon() {
+        this.initialize.apply(this, arguments);
+    }
+    Sprite_BFBookIcon.prototype = Object.create(Sprite.prototype);
+    Sprite_BFBookIcon.prototype.constructor = Sprite_BFBookIcon;
+    Sprite_BFBookIcon.prototype.initialize = function() {
+        Sprite.prototype.initialize.call(this, ImageManager.loadPicture('BFJournal/BookIcon'));
+        this.x = 16;
+        this.y = 8;
+        this.scale.x = 0.86;
+        this.scale.y = 0.86;
+    };
+    Sprite_BFBookIcon.prototype.update = function() {
+        Sprite.prototype.update.call(this);
+        var w = this.bitmap ? this.bitmap.width * this.scale.x : 76;
+        var h = this.bitmap ? this.bitmap.height * this.scale.y : 76;
+        if (TouchInput.x >= this.x && TouchInput.x <= this.x + w &&
+            TouchInput.y >= this.y && TouchInput.y <= this.y + h &&
+            TouchInput.isTriggered()) {
+            SceneManager.push(Scene_BFJournal);
+        }
+    };
+
+    var _SceneMap_createAllWindows = Scene_Map.prototype.createAllWindows;
+    Scene_Map.prototype.createAllWindows = function() {
+        _SceneMap_createAllWindows.call(this);
+        this._bfBookIcon = new Sprite_BFBookIcon();
+        this.addChild(this._bfBookIcon);
+    };
+
+    // Прозрачный слой текста. Оформление полностью задаётся JournalBook.png.
+    // ВАЖНО: макет книги всегда 1280x720. Масштаб считается заранее, поэтому
+    // асинхронная загрузка Bitmap больше не сдвигает/обрезает книгу.
+    function Window_BFJournalText() {
+        this.initialize.apply(this, arguments);
+    }
+    Window_BFJournalText.prototype = Object.create(Window_Base.prototype);
+    Window_BFJournalText.prototype.constructor = Window_BFJournalText;
+
+    Window_BFJournalText.prototype.initialize = function(x, y, w, h, mode) {
+        Window_Base.prototype.initialize.call(this, x, y, w, h);
+        this.opacity = 0;
+        this.backOpacity = 0;
+        this.padding = 0;
+        this._mode = mode || 'active';
+        this._bookX = 0;
+        this._bookY = 0;
+        this._bookScale = 1;
+        this.refresh();
+    };
+
+    Window_BFJournalText.prototype.setLayout = function(x, y, scale) {
+        this._bookX = Number(x) || 0;
+        this._bookY = Number(y) || 0;
+        this._bookScale = Number(scale) || 1;
+        this.refresh();
+    };
+
+    Window_BFJournalText.prototype.setMode = function(mode) {
+        if (this._mode !== mode) {
+            this._mode = mode;
+            this.refresh();
+        }
+    };
+
+    Window_BFJournalText.prototype.wrapText = function(text, maxWidth, fontSize) {
+        var out = [], line = '';
+        var words = String(text == null ? '' : text).split(/\s+/);
+        this.contents.fontSize = Math.max(12, Math.round(fontSize * (this._bookScale || 1)));
+        for (var i = 0; i < words.length; i++) {
+            if (!words[i]) continue;
+            var test = line ? line + ' ' + words[i] : words[i];
+            if (line && this.contents.measureTextWidth(test) > Math.round(maxWidth * (this._bookScale || 1))) {
+                out.push(line);
+                line = words[i];
+            } else {
+                line = test;
+            }
+        }
+        if (line) out.push(line);
+        return out;
+    };
+
+    Window_BFJournalText.prototype.refresh = function() {
+        this.contents.clear();
+        this.contents.fontFace = 'Georgia, "Times New Roman", serif';
+        this.contents.fontBold = false;
+        this.contents.outlineColor = '#2b160c';
+        this.contents.outlineWidth = 2;
+
+        var game = BF.game(), self = this;
+        var scale = this._bookScale || 1;
+        var ox = this._bookX || 0;
+        var oy = this._bookY || 0;
+        function X(v) { return Math.round(ox + v * scale); }
+        function Y(v) { return Math.round(oy + v * scale); }
+        function W(v) { return Math.round(v * scale); }
+        function heading(text, x, y, w) {
+            self.contents.fontSize = Math.max(12, Math.round(34 * scale));
+            self.contents.fontBold = true;
+            self.changeTextColor('#f5dfb7');
+            self.contents.outlineColor = '#2b1208';
+            self.contents.outlineWidth = Math.max(2, Math.round(4 * scale));
+            self.drawText(text, X(x), Y(y), W(w), 'center');
+            self.contents.fontBold = false;
+        }
+        function title(text, x, y, w) {
+            self.contents.fontSize = Math.max(12, Math.round(28 * scale));
+            self.contents.fontBold = true;
+            self.changeTextColor('#4a2814');
+            self.contents.outlineColor = '#f1dfbf';
+            self.contents.outlineWidth = Math.max(1, Math.round(1.5 * scale));
+            self.drawText(text, X(x), Y(y), W(w), 'left');
+            self.contents.fontBold = false;
+        }
+        function body(text, x, y, w, align) {
+            self.contents.fontSize = Math.max(12, Math.round(25 * scale));
+            self.contents.fontBold = false;
+            self.changeTextColor('#4a2814');
+            self.contents.outlineColor = '#f1dfbf';
+            self.contents.outlineWidth = Math.max(1, Math.round(1.5 * scale));
+            self.drawText(text, X(x), Y(y), W(w), align || 'left');
+        }
+        function wrapped(text, x, y, w, lineH) {
+            var yy = y;
+            self.wrapText(text, w, 25).forEach(function(line) {
+                body(line, x, yy, w, 'left');
+                yy += lineH;
+            });
+            return yy;
+        }
+        function rule(x, y, w) {
+            self.contents.paintOpacity = 80;
+            self.contents.fillRect(X(x), Y(y), W(w), Math.max(1, Math.round(scale)), '#8f6a42');
+            self.contents.paintOpacity = 255;
+        }
+
+        var L = 92, LW = 500;
+        var R = 670, RW = 430; // Stop before the built-in right tabs.
+
+        if (this._mode === 'active') {
+            heading('ТЕКУЩИЕ ДЕЛА', L, 64, LW);
+            heading('ЗАПИСЬ РАССЛЕДОВАНИЯ', R, 64, RW);
+            rule(L, 115, LW);
+            rule(R, 115, RW);
+
+            var active = game.getActive();
+            if (!active.length) {
+                title('Пока нет текущих дел.', L, 155, LW);
+                body('Когда Катя получит новое дело,', L, 205, LW, 'center');
+                body('оно появится здесь.', L, 242, LW, 'center');
+            } else {
+                var ly = 145;
+                active.forEach(function(id) {
+                    var cfg = BF.configFor(id), q = game.get(id);
+                    if (!cfg || !q) return;
+                    title('• ' + cfg.title, L, ly, LW);
+                    ly += 40;
+                    ly = wrapped((cfg.steps || [])[q.step] || '', L, ly, LW, 30) + 12;
+                    if (ly < 640) { rule(L, ly, LW); ly += 18; }
+                });
+            }
+
+            var selected = game.selectedQuest();
+            if (!selected) {
+                title('Запись появится после получения дела.', R, 155, RW);
+            } else {
+                var sc = BF.configFor(selected), sq = game.get(selected);
+                if (sc && sq) {
+                    title(sc.title, R, 145, RW);
+                    var ry = wrapped(sc.description || '', R, 185, RW, 30);
+                    rule(R, ry + 4, RW);
+                    title('Текущий шаг', R, ry + 34, RW);
+                    wrapped((sc.steps || [])[sq.step] || '', R, ry + 73, RW, 30);
+                }
+            }
+        } else if (this._mode === 'notes') {
+            heading('ЛИЧНЫЕ ЗАМЕТКИ', L, 64, LW);
+            heading('НАЙДЕННЫЕ СВЕДЕНИЯ', R, 64, RW);
+            rule(L, 115, LW);
+            rule(R, 115, RW);
+            if (game.syncDigitsFromVariables) game.syncDigitsFromVariables();
+            var notes = game._notes || {}, keys = Object.keys(notes);
+            if (!keys.length) {
+                title('Записей пока нет.', L, 155, LW);
+            } else {
+                var ny = 145;
+                keys.forEach(function(k) {
+                    ny = wrapped(notes[k], L, ny, LW, 30) + 14;
+                    if (ny < 640) { rule(L, ny, LW); ny += 18; }
+                });
+            }
+            var digits = game.getDigits ? game.getDigits() : {};
+            var foundY = 155;
+            if (Object.keys(digits).length) {
+                body('Найденные цифры (Битц):', R, foundY, RW, 'left');
+                foundY += 42;
+                var digitOrder = ['bartender','engineer','manager'];
+                var digitNames = { bartender:'Бармен', engineer:'Инженер', manager:'Шулер' };
+                digitOrder.forEach(function(k){
+                    if (digits[k] == null) return;
+                    title(self, digitNames[k] + ': ' + digits[k], R, foundY, RW);
+                    foundY += 42;
+                });
+            } else {
+                body('Здесь появляются только сведения,', R, 155, RW, 'left');
+                body('которые Катя уже узнала', R, 192, RW, 'left');
+                body('во время расследования.', R, 229, RW, 'left');
+            }
+        } else {
+            heading('ЗАВЕРШЁННЫЕ ДЕЛА', L, 64, LW);
+            heading('АРХИВ РАССЛЕДОВАНИЯ', R, 64, RW);
+            rule(L, 115, LW);
+            rule(R, 115, RW);
+            var done = game.getCompleted();
+            if (!done.length) {
+                title('Пока ничего не завершено.', L, 155, LW);
+            } else {
+                var dy = 145;
+                done.forEach(function(id) {
+                    var cfg = BF.configFor(id);
+                    if (!cfg) return;
+                    title('✓ ' + cfg.title, L, dy, LW);
+                    dy += 44;
+                });
+            }
+            body('Завершённые дела остаются', R, 180, RW, 'center');
+            body('в архиве Кати.', R, 217, RW, 'center');
+        }
+        this.contents._setDirty && this.contents._setDirty();
+    };
+
+    function Scene_BFJournal() { this.initialize.apply(this, arguments); }
+    Scene_BFJournal.prototype = Object.create(Scene_Base.prototype);
+    Scene_BFJournal.prototype.constructor = Scene_BFJournal;
+
+    Scene_BFJournal.prototype.create = function() {
+        BF.refreshConfigAliases();
+        Scene_Base.prototype.create.call(this);
+        this._mode = 'active';
+
+        this._dim = new Sprite(new Bitmap(Graphics.boxWidth, Graphics.boxHeight));
+        this._dim.bitmap.fillAll('rgba(0,0,0,0.14)');
+        this.addChild(this._dim);
+
+        var BW = 1280, BH = 720;
+        var scale = Math.min(Graphics.boxWidth / BW, Graphics.boxHeight / BH);
+        this._bookX = Math.round((Graphics.boxWidth - BW * scale) / 2);
+        this._bookY = Math.round((Graphics.boxHeight - BH * scale) / 2);
+        this._bookScale = scale;
+
+        this._book = new Sprite(ImageManager.loadPicture('BFJournal/JournalBook'));
+        this._book.anchor.set(0, 0);
+        this._book.x = this._bookX;
+        this._book.y = this._bookY;
+        this._book.scale.set(scale, scale);
+        this.addChild(this._book);
+
+        // Text is a full-screen transparent layer; its coordinates are mapped to the book.
+        this._text = new Window_BFJournalText(0, 0, Graphics.boxWidth, Graphics.boxHeight, 'active');
+        this._text.setLayout(this._bookX, this._bookY, scale);
+        this.addChild(this._text);
+
+        // Labels only. The actual button plates come from JournalBook.png.
+        this._tabs = new Sprite(new Bitmap(Graphics.boxWidth, Graphics.boxHeight));
+        this._drawTabs();
+        this.addChild(this._tabs);
+    };
+
+    Scene_BFJournal.prototype._drawTabs = function() {
+        var b = this._tabs.bitmap, s = this._bookScale, ox = this._bookX, oy = this._bookY;
+        b.clear();
+        b.fontFace = 'Georgia, "Times New Roman", serif';
+        b.fontBold = true;
+        b.fontSize = Math.max(16, Math.round(24 * s));
+        b.textColor = '#f4dfbd';
+        b.outlineColor = '#2b1208';
+        b.outlineWidth = Math.max(2, Math.round(4 * s));
+
+        var tabs = [
+            {x:1160, y:108, w:108, h:88, label:'ДЕЛА'},
+            {x:1160, y:207, w:108, h:88, label:'ЗАМЕТКИ'},
+            {x:1160, y:307, w:108, h:88, label:'АРХИВ'}
+        ];
+        this._tabHit = [];
+        for (var i = 0; i < tabs.length; i++) {
+            var t = tabs[i];
+            b.drawText(t.label, Math.round(ox+t.x*s), Math.round(oy+(t.y+27)*s), Math.round(t.w*s), Math.max(28,Math.round(34*s)), 'center');
+            this._tabHit.push({
+                x:Math.round(ox+t.x*s), y:Math.round(oy+t.y*s),
+                w:Math.round(t.w*s), h:Math.round(t.h*s)
+            });
+        }
+        this._closeHit = {
+            x:Math.round(ox+1182*s), y:Math.round(oy+8*s),
+            w:Math.round(82*s), h:Math.round(82*s)
+        };
+    };
+
+    Scene_BFJournal.prototype.update = function() {
+        Scene_Base.prototype.update.call(this);
+        if (Input.isTriggered('cancel') || TouchInput.isCancelled()) {
+            SceneManager.pop();
+            return;
+        }
+        if (!TouchInput.isTriggered()) return;
+
+        var x = TouchInput.x, y = TouchInput.y;
+        if (this._closeHit && x >= this._closeHit.x && x <= this._closeHit.x+this._closeHit.w && y >= this._closeHit.y && y <= this._closeHit.y+this._closeHit.h) {
+            SceneManager.pop();
+            return;
+        }
+        for (var i=0;i<this._tabHit.length;i++) {
+            var t=this._tabHit[i];
+            if(x>=t.x&&x<=t.x+t.w&&y>=t.y&&y<=t.y+t.h){
+                this.setMode(i===0?'active':i===1?'notes':'done');
+                return;
+            }
+        }
+
+        if (this._mode === 'active') {
+            var active = BF.game().getActive();
+            var ly = this._bookY + 135*this._bookScale;
+            for (var j=0;j<active.length;j++) {
+                var cfg=BF.configFor(active[j]), q=BF.game().get(active[j]);
+                if(!cfg||!q) continue;
+                var step=String((cfg.steps||[])[q.step]||'');
+                var lines=Math.max(1, Math.ceil(step.length/42));
+                var hh=Math.max(64, lines*30+46)*this._bookScale;
+                if(y>=ly&&y<ly+hh&&x>=this._bookX+70*this._bookScale&&x<=this._bookX+625*this._bookScale){
+                    BF.game().selectQuest(active[j]);
+                    this._text.refresh();
+                    return;
+                }
+                ly += hh + 16*this._bookScale;
+            }
+        }
+    };
+
+    Scene_BFJournal.prototype.setMode = function(mode) {
+        this._mode = mode;
+        this._text.setMode(mode);
+    };
+
+    window.Scene_BFJournal = Scene_BFJournal;
 
 })();
