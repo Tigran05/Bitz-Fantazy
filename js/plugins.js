@@ -12,8 +12,5 @@ var $plugins =
 {"name":"BF_GearMenu","status":true,"description":"Bitz Fantasy - Полная замена стандартного меню на меню-шестерёнку.","parameters":{}},
 {"name":"BF_RatCatch","status":true,"description":"Bitz Fantasy - Rat Catch v8. Fixed MV Bitmap error, clearer broom controls and reliable quest completion.","parameters":{}},
 {"name":"BF_Nitrogen","status":true,"description":"BitzFantasy — Nitrogen V6. Реальная мини-игра с ручным вентилем, инерцией, риском и таймингами.","parameters":{}},
-{"name":"BF_Cheater_FULL","status":false,"description":"BitzFantasy — Разоблачение жулика v3.0 Full","parameters":{}},
-{"name":"BF_BrunoInterrogation_FULL","status":false,"description":"BitzFantasy — Допрос Бруно v3.0 Full","parameters":{}},
-{"name":"BF_Nitrogen_FULL","status":false,"description":"BitzFantasy — Мини-игра жидкого азота v3.0 Full","parameters":{}},
-{"name":"BF_CaseFiles","status":false,"description":"Bitz Fantasy — seven detective cases and evidence puzzles","parameters":{}}
+{"name":"BF_Cheater","status":true,"description":"BitzFantasy — мини-игра разоблачения жулика. Понятный интерфейс 816x624.","parameters":{}}
 ];
