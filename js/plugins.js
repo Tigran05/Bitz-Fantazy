@@ -16,9 +16,10 @@ var $plugins =
 {"name":"BF_Cheater","status":true,"description":"BitzFantasy — мини-игра разоблачения жулика. Понятный интерфейс 816x624.","parameters":{}},
 {"name":"LockPuzzleMV","status":true,"description":"v4.0 Touch-first lockpicking. One-finger control, no Enter required.","parameters":{}},
 {"name":"SafeCodeUI","status":true,"description":"[BitzFantasy] Красивый сенсорный кодовый замок сейфа. RPG Maker MV.","parameters":{}},
-{"name":"BF_BrunoInterrogation","status":true,"description":"BitzFantasy — Допрос Бруно v2.0 (мышь + touch)","parameters":{}},
 {"name":"BF_KeySearchPuzzle","status":true,"description":"Bitz Fantasy — мини-игра поиска потерянных ключей у водосточной решётки","parameters":{}},
 {"name":"BF_UnderwaterTunnel","status":true,"description":"Bitz Fantasy — затопленный туннель: аркадная мини-игра в стиле Flappy Bird","parameters":{}},
-{"name":"BF_KabanchikFinale","status":true,"description":"Bitz Fantasy — Финальная мини-игра Кабанчика: дверь кабинета + побег v1.0","parameters":{}},
-{"name":"BF_Minecart","status":true,"description":"Bitz Fantasy — Мини-игра «Вагонетки» для перехода через пещеры.","parameters":{}}
+{"name":"BF_Minecart","status":true,"description":"Bitz Fantasy — Мини-игра «Вагонетки» для перехода через пещеры.","parameters":{}},
+{"name":"BF_PanelPuzzle1","status":true,"description":"Bitz Fantasy — Пульт 1: электрическая разводка","parameters":{}},
+{"name":"BF_PanelPuzzle2","status":true,"description":"Bitz Fantasy — Пульт 2: синхронизация шестерён","parameters":{}},
+{"name":"BF_PanelPuzzle3","status":true,"description":"Bitz Fantasy — Пульт 3: код запуска","parameters":{}}
 ];

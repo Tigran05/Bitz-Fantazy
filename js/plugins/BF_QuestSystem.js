@@ -55,7 +55,7 @@
     'use strict';
 
     var BF = window.BF_QuestSystem = window.BF_QuestSystem || {};
-    BF.version = '3.0';
+    BF.version = '3.1';
 
     // =========================
     // РЕДАКТИРУЕМЫЕ КВЕСТЫ
@@ -98,6 +98,7 @@
         this._currentQuest = null;
         this._selectedQuest = null;
         this._minigame = null;
+        this._panels = { '1': false, '2': false, '3': false };
     };
     Game_BFQuests.prototype.ensure = function(id) {
         if (!this._data[id]) {
@@ -213,6 +214,50 @@
         if(q.step>=max) return this.complete(id);
         q.step++; return true;
     };
+
+    // Iron Cliff: three independent control panels. They can be completed in any order.
+    // The quest advances from step 5 (zero-based step 4) to step 6 only after all
+    // three panels have been disabled through: BF_Quest panel 1/2/3.
+    Game_BFQuests.prototype.ensurePanels = function() {
+        if (!this._panels || typeof this._panels !== 'object' || Array.isArray(this._panels)) {
+            this._panels = {};
+        }
+        ['1','2','3'].forEach(function(id) {
+            this._panels[id] = this._panels[id] === true;
+        }, this);
+        return this._panels;
+    };
+
+    Game_BFQuests.prototype.getPanels = function() {
+        return this.ensurePanels();
+    };
+
+    Game_BFQuests.prototype.panelCount = function() {
+        var panels = this.ensurePanels();
+        var count = 0;
+        ['1','2','3'].forEach(function(id) { if (panels[id]) count++; });
+        return count;
+    };
+
+    Game_BFQuests.prototype.panel = function(panelId) {
+        panelId = String(panelId == null ? '' : panelId).trim();
+        if (['1','2','3'].indexOf(panelId) < 0) return false;
+
+        var q = this.get('iron_cliff');
+        // The panels belong specifically to step 5: "Отключить трёх големов".
+        if (!q || q.status !== 'active' || Number(q.step) !== 4) return false;
+
+        var panels = this.ensurePanels();
+        if (panels[panelId]) return true;
+
+        panels[panelId] = true;
+
+        // Only the third completed panel advances the quest to step 6.
+        if (this.panelCount() >= 3) {
+            this.nextStep('iron_cliff');
+        }
+        return true;
+    };
     // Compatibility / selection API used by the journal and mini-games.
     Game_BFQuests.prototype.selectQuest = function(id) {
         id=String(id||'').trim();
@@ -305,6 +350,8 @@
         if (typeof game._currentQuest === 'undefined') game._currentQuest = null;
         if (typeof game._selectedQuest === 'undefined') game._selectedQuest = null;
         if (typeof game._minigame === 'undefined') game._minigame = null;
+        if (!game._panels || typeof game._panels !== 'object' || Array.isArray(game._panels)) game._panels = {};
+        ['1','2','3'].forEach(function(id) { game._panels[id] = game._panels[id] === true; });
         return game;
     }
 
@@ -333,6 +380,7 @@
         if(cmd==='start') { BF.game().start(id); }
         else if(cmd==='complete') { BF.game().complete(id); }
         else if(cmd==='next') { BF.game().nextStep(id); }
+        else if(cmd==='panel') { BF.game().panel(id); }
         else if(cmd==='step') { BF.game().setStep(id,Number(args[2]||0)); }
         else if(cmd==='select') { BF.game().selectQuest(id); }
         else if(cmd==='minigamestart') { BF.game().minigameStart(id,args[2]); }
@@ -513,7 +561,11 @@
                     if (!cfg || !q) return;
                     title('• ' + cfg.title, L, ly, LW);
                     ly += 40;
-                    ly = wrapped((cfg.steps || [])[q.step] || '', L, ly, LW, 30) + 12;
+                    var activeStepText = ((cfg.steps || [])[q.step] || '');
+                    if (id === 'iron_cliff' && Number(q.step) === 4) {
+                        activeStepText = 'Пульты отключены: ' + game.panelCount() + '/3';
+                    }
+                    ly = wrapped(activeStepText, L, ly, LW, 30) + 12;
                     if (ly < 640) { rule(L, ly, LW); ly += 18; }
                 });
             }
@@ -528,7 +580,11 @@
                     var ry = wrapped(sc.description || '', R, 185, RW, 30);
                     rule(R, ry + 4, RW);
                     title('Текущий шаг', R, ry + 34, RW);
-                    wrapped((sc.steps || [])[sq.step] || '', R, ry + 73, RW, 30);
+                    var selectedStepText = ((sc.steps || [])[sq.step] || '');
+                    if (selected === 'iron_cliff' && Number(sq.step) === 4) {
+                        selectedStepText = 'Пульты отключены: ' + game.panelCount() + '/3';
+                    }
+                    wrapped(selectedStepText, R, ry + 73, RW, 30);
                 }
             }
         } else if (this._mode === 'notes') {
