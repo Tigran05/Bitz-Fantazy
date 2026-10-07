@@ -89,6 +89,7 @@
     }
 
     function Game_BFQuests() { this.initialize.apply(this, arguments); }
+    window.Game_BFQuests = Game_BFQuests;
     Game_BFQuests.prototype.initialize = function() {
         this._data = {};
         this._notes = {};
@@ -176,10 +177,23 @@
         if(id==='house' && BF.NOTES.house) this._notes.house = BF.NOTES.house;
         if(id==='safe' && BF.NOTES.accounting) this._notes.accounting = BF.NOTES.accounting;
         if(id==='intro' && BF.NOTES.ape) this._notes.ape = BF.NOTES.ape;
-        if(this.workersComplete() && id!=='house' && !this.isCompleted('house')) this.start('house');
+        if(id==='intro') {
+            delete this._notes.ape;
+            delete this._notes.digit_intro;
+        }
+        if(this.workersComplete()) {
+            if(!this.isCompleted('intro')) this.complete('intro');
+            if(!this.isStarted('house')) this.start('house');
+        }
         if(id==='house' && !this.isCompleted('passage')) this.start('passage');
         if(id==='passage' && !this.isCompleted('safe')) this.start('safe');
         if(id==='safe' && !this.isCompleted('evidence')) this.start('evidence');
+        if(id==='evidence' && !this.isCompleted('vermillion')) this.start('vermillion');
+        if(id==='vermillion' && !this.isCompleted('iron_cliff')) this.start('iron_cliff');
+        if(id==='iron_cliff' && !this.isCompleted('vault')) this.start('vault');
+        if(id==='vault' && !this.isCompleted('forest_city')) this.start('forest_city');
+        if(id==='forest_city' && !this.isCompleted('mansion')) this.start('mansion');
+        if(id==='mansion' && !this.isCompleted('empire_tower')) this.start('empire_tower');
         if(this._currentQuest===id) this._currentQuest=null;
         if(this._selectedQuest===id) this._selectedQuest=null;
         this._minigame=null;
@@ -278,14 +292,28 @@
     };
     Game_BFQuests.prototype.getDigits = function() { return this._digits || {}; };
 
+    function normalizeGameBFQuests(game) {
+        if (!game || typeof game !== 'object') return new Game_BFQuests();
+        if (Object.setPrototypeOf) {
+            Object.setPrototypeOf(game, Game_BFQuests.prototype);
+        } else if ('__proto__' in game) {
+            game.__proto__ = Game_BFQuests.prototype;
+        }
+        ['_data', '_notes', '_storyFlags', '_digits'].forEach(function(key) {
+            if (!game[key] || typeof game[key] !== 'object' || Array.isArray(game[key])) game[key] = {};
+        });
+        if (typeof game._currentQuest === 'undefined') game._currentQuest = null;
+        if (typeof game._selectedQuest === 'undefined') game._selectedQuest = null;
+        if (typeof game._minigame === 'undefined') game._minigame = null;
+        return game;
+    }
+
     // Глобальный контейнер. Не зависит от порядка загрузки/старого сохранения.
     // В RPG Maker MV некоторые проекты вызывают plugin command до createGameObjects,
     // поэтому нельзя безусловно обращаться к $gameBFQuests.
     window.$gameBFQuests = window.$gameBFQuests || null;
     BF.game = function() {
-        if (!window.$gameBFQuests || typeof window.$gameBFQuests.start !== 'function') {
-            window.$gameBFQuests = new Game_BFQuests();
-        }
+        window.$gameBFQuests = normalizeGameBFQuests(window.$gameBFQuests);
         return window.$gameBFQuests;
     };
     BF.minigameStart = function(appId, questId) { return BF.game().minigameStart(appId, questId); };
@@ -293,11 +321,11 @@
 
     // Save/load integration
     var _createGameObjects = DataManager.createGameObjects;
-    DataManager.createGameObjects = function() { _createGameObjects.call(this); window.$gameBFQuests=new Game_BFQuests(); };
+    DataManager.createGameObjects = function() { _createGameObjects.call(this); window.$gameBFQuests=null; };
     var _makeSaveContents = DataManager.makeSaveContents;
-    DataManager.makeSaveContents = function() { var c=_makeSaveContents.call(this); c.bfQuests=window.$gameBFQuests; return c; };
+    DataManager.makeSaveContents = function() { var c=_makeSaveContents.call(this); window.$gameBFQuests=normalizeGameBFQuests(window.$gameBFQuests); c.bfQuests=window.$gameBFQuests; return c; };
     var _extractSaveContents = DataManager.extractSaveContents;
-    DataManager.extractSaveContents = function(c) { _extractSaveContents.call(this,c); window.$gameBFQuests=c.bfQuests||new Game_BFQuests(); };
+    DataManager.extractSaveContents = function(c) { _extractSaveContents.call(this,c); window.$gameBFQuests=normalizeGameBFQuests(c.bfQuests); };
 
     function pluginCommand(args) {
         var cmd=(args[0]||'').toLowerCase();

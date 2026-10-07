@@ -23,6 +23,7 @@
     // Data
     // ------------------------------------------------------------
     function Game_BFInventory() { this.initialize.apply(this, arguments); }
+    window.Game_BFInventory = Game_BFInventory;
     Game_BFInventory.prototype.initialize = function() { this._items = {}; };
     Game_BFInventory.prototype.amount = function(id) {
         return Number(this._items[String(id)] || 0);
@@ -50,8 +51,23 @@
         });
     };
 
+    function normalizeGameBFInventory(inventory) {
+        if (!inventory || typeof inventory !== 'object') return new Game_BFInventory();
+        if (!(inventory instanceof Game_BFInventory)) {
+            if (Object.setPrototypeOf) {
+                Object.setPrototypeOf(inventory, Game_BFInventory.prototype);
+            } else if ('__proto__' in inventory) {
+                inventory.__proto__ = Game_BFInventory.prototype;
+            }
+        }
+        if (!inventory._items || typeof inventory._items !== 'object' || Array.isArray(inventory._items)) {
+            inventory._items = {};
+        }
+        return inventory;
+    }
+
     function inv() {
-        if (!window.$gameBFInventory) window.$gameBFInventory = new Game_BFInventory();
+        window.$gameBFInventory = normalizeGameBFInventory(window.$gameBFInventory);
         return window.$gameBFInventory;
     }
     BFInv.game = inv;
@@ -59,12 +75,19 @@
     DataManager._bfInvCreate = DataManager.createGameObjects;
     DataManager.createGameObjects = function() {
         DataManager._bfInvCreate.call(this);
+        window.$gameBFInventory = normalizeGameBFInventory(window.$gameBFInventory);
+    };
+
+    DataManager._bfInvSetupNewGame = DataManager.setupNewGame;
+    DataManager.setupNewGame = function() {
+        DataManager._bfInvSetupNewGame.call(this);
         window.$gameBFInventory = new Game_BFInventory();
     };
 
     DataManager._bfInvSave = DataManager.makeSaveContents;
     DataManager.makeSaveContents = function() {
         var c = DataManager._bfInvSave.call(this);
+        window.$gameBFInventory = normalizeGameBFInventory(window.$gameBFInventory);
         c.bfInventory = window.$gameBFInventory;
         return c;
     };
@@ -72,7 +95,7 @@
     DataManager._bfInvLoad = DataManager.extractSaveContents;
     DataManager.extractSaveContents = function(c) {
         DataManager._bfInvLoad.call(this, c);
-        window.$gameBFInventory = c.bfInventory || new Game_BFInventory();
+        window.$gameBFInventory = normalizeGameBFInventory(c.bfInventory);
     };
 
     function openInventory() {

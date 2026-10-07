@@ -1,441 +1,642 @@
 /*:
- * @plugindesc Bitz Fantasy — BF_RatCatch. Puzzle mini-game: rats, baited mousetrap, vents, fan, valve, crates and visible airflow.
+ * @plugindesc Bitz Fantasy — BF_RatCatch. Full-screen single logic puzzle: build a safe route for one mouse into one mousetrap.
  * @author ASTROLIT
  *
  * @help
  * Plugin command:
  *   BF_RatCatch start
+ *   BF_RatCatch start <questId>
  *
  * Script call:
  *   BF_RatCatch_Start();
- *
- * Result:
- *   Quest receives SUCCESS
- *   Self Switch A of the launching event = ON
+ *   BF_RatCatch_Start('bartender');
  *
  * Controls:
- *   Mouse / touch — interact and drag cheese/crates
+ *   Mouse / touch — drag barriers between marked sockets
+ *   ENTER / SPACE / click the mouse — release the mouse
+ *   R — reset the puzzle
+ *   S — show valid barrier sockets
  *   ESC — exit
- *   R — reset
- *   S — hint
+ *
+ * Puzzle:
+ *   One hand-designed maze. One mouse. One mousetrap. Ten movable barriers.
+ *   The mouse follows a deterministic left-hand navigation rule.
+ *   Four visible holes are hazards: if the mouse enters one, the attempt is lost.
+ *   The puzzle has a single safe barrier configuration among all valid
+ *   placements, so the player must plan several moves ahead.
+ *
+ * Result:
+ *   BF_QuestSystem.minigameResult('SUCCESS')
+ *   Self Switch A of the launching event = ON
  */
 (function(){
 'use strict';
 
-var W=1280,H=720,TOTAL=6,RESULT_VAR=0,WAIT='bfRatCatchWait';
-var ROOT='BF_RatCatch/';
+var W=1280,H=720;
+var WAIT='bfRatCatchWait';
+var DEFAULT_QUEST='bartender';
+var BLOCK_COUNT=10;
 var origin={mapId:0,eventId:0};
 var cache={};
 
 function img(name){
-  if(!cache[name]) cache[name]=ImageManager.loadPicture(ROOT+name);
+  if(!cache[name]) cache[name]=ImageManager.loadPicture('BF_RatCatch/'+name);
   return cache[name];
 }
-function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
-function dist(ax,ay,bx,by){ var dx=ax-bx,dy=ay-by; return Math.sqrt(dx*dx+dy*dy); }
-function insidePoly(x,y,p){
-  var c=false;
-  for(var i=0,j=p.length-1;i<p.length;j=i++){
-    var xi=p[i][0],yi=p[i][1],xj=p[j][0],yj=p[j][1];
-    if(((yi>y)!==(yj>y)) && x < (xj-xi)*(y-yi)/(yj-yi)+xi) c=!c;
-  }
-  return c;
-}
-function circleRect(cx,cy,r,rect){
-  var nx=clamp(cx,rect.x,rect.x+rect.w),ny=clamp(cy,rect.y,rect.y+rect.h);
-  var dx=cx-nx,dy=cy-ny; return dx*dx+dy*dy<=r*r;
-}
-function pointerHit(x,y,cx,cy,r){ return dist(x,y,cx,cy)<=r; }
-function seOk(){ try{SoundManager.playOk();}catch(e){} }
-function seBuzzer(){ try{SoundManager.playBuzzer();}catch(e){} }
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function key(x,y){return x+','+y;}
+function dist2(ax,ay,bx,by){var dx=ax-bx,dy=ay-by;return dx*dx+dy*dy;}
+function seOk(){try{SoundManager.playOk();}catch(e){}}
+function seBuzzer(){try{SoundManager.playBuzzer();}catch(e){}}
+function seCursor(){try{SoundManager.playCursor();}catch(e){}}
+function seCancel(){try{SoundManager.playCancel();}catch(e){}}
 
-function Scene_BFRatCatch(){ this.initialize.apply(this,arguments); }
+/*
+ * 23x13 hand-designed maze. The visible walls and the logical walkability
+ * use the same MAP, so the player always sees the same geometry the mouse uses.
+ */
+var MAP=[
+  '#######################',
+  '#...#.........#.......#',
+  '##..#####.###.#.#.#####',
+  '#...#.....#...#.#.#...#',
+  '#..##.#####.###...#.#.#',
+  '#...#.#.#...#...#...#.#',
+  '###...#.#.########.##.#',
+  '#...#.#...............#',
+  '#.###.#.#####.#######.#',
+  '#.....#.#.....#...#...#',
+  '##.#.##...#.###.###.###',
+  '#.........#...........#',
+  '#######################'
+];
+var ROWS=MAP.length;
+var COLS=MAP[0].length;
+var CELL=Math.min(W/COLS,H/ROWS);
+var OX=(W-COLS*CELL)/2;
+var OY=(H-ROWS*CELL)/2;
+var START={x:1,y:1};
+var TRAP={x:21,y:11};
+var WALK={};
+for(var yy=0;yy<ROWS;yy++){
+  for(var xx=0;xx<COLS;xx++)if(MAP[yy][xx]!=='#')WALK[key(xx,yy)]=true;
+}
+
+/* Four dangerous mouse holes. The first one is intentionally close to the
+ * starting corridor so the initial arrangement demonstrates the danger. */
+var HOLES=[
+  [2,2],
+  [6,11],
+  [15,2],
+  [15,9]
+];
+var HOLE_SET={};
+for(var hi=0;hi<HOLES.length;hi++)HOLE_SET[key(HOLES[hi][0],HOLES[hi][1])]=true;
+
+/* Barriers can only be placed on these sockets. */
+var SOCKETS=[
+  [2,1],[9,1],[17,1],[3,2],[2,3],[1,4],[15,4],[17,4],[18,5],
+  [3,6],[7,7],[9,7],[13,7],[18,7],[2,9],[11,9],[7,10],[15,11]
+];
+
+/* Initial position. This intentionally drives the mouse into the first hole. */
+var BLOCK_START=[
+  [17,1],[3,2],[1,4],[18,5],[3,6],
+  [13,7],[18,7],[11,9],[7,10],[15,11]
+];
+
+/* Unique safe configuration found for this exact maze/rule set. It is not
+ * revealed to the player; it exists here only as the hand-authored solution. */
+var BLOCK_SOLUTION=[
+  [1,4],[2,9],[7,7],[7,10],[11,9],
+  [15,4],[15,11],[17,1],[17,4],[18,5]
+];
+
+function Scene_BFRatCatch(){this.initialize.apply(this,arguments);}
 Scene_BFRatCatch.prototype=Object.create(Scene_Base.prototype);
 Scene_BFRatCatch.prototype.constructor=Scene_BFRatCatch;
 
 Scene_BFRatCatch.prototype.initialize=function(){
   Scene_Base.prototype.initialize.call(this);
-  this._frame=0; this._caught=0; this._drag=null; this._done=false; this._tokenTaken=false;
-  this._finishTimer=0; this._tokenSeed=2; this._lastHint=0; this._finishTimer=0;
-  this._fanOn=false; this._fanFrame=0; this._fanTimer=0;
-  this._valveMode=0; // -1 left, 0 closed, 1 right
-  this._valveAngle=0; this._valveFrom=0; this._valveTo=0; this._valveT=1;
-  this._shutters=[false,false]; this._shutterP=[0,0];
-  this._rats=[]; this._crates=[]; this._wind=[];
-  this._msg=''; this._msgT=0;
-  this._playPoly=[
-    [150,456],[260,448],[390,445],[520,442],[680,442],[835,446],[980,450],[1100,462],
-    [1200,480],[1250,520],[1270,575],[1260,640],[1235,690],[1090,710],[910,712],[730,712],
-    [545,708],[390,695],[275,665],[205,630],[170,590],[150,530]
-  ];
-  this._trap={x:640,y:590,r:82,busy:0};
-  this._cheese={x:435,y:585,homeX:435,homeY:585,placed:false,held:false,sprite:null};
+  this._frame=0;
+  this._mode='build';
+  this._drag=null;
+  this._message='';
+  this._messageT=0;
+  this._hintT=0;
+  this._won=false;
+  this._lost=false;
+  this._resultSent=false;
+  this._mouse=null;
+  this._mouseShadow=null;
+  this._trapSp=null;
+  this._holeSps=[];
+  this._barriers=[];
+  this._mazeSp=null;
+  this._fxSp=null;
+  this._path=[];
+  this._pathIndex=0;
+  this._stepT=0;
+  this._pauseT=0;
+  this._runResult='';
+  this._lossT=0;
 };
 
 Scene_BFRatCatch.prototype.preload=function(){
-  var n=['background','cheese','crate','shadow','mousetrap_open','mousetrap_closed','token','wind_streak','wind_glow','valve'];
-  for(var i=0;i<4;i++){ n.push('fan_frame_'+i); n.push('shutter_frame_'+i); }
-  for(var r=1;r<=6;r++) n.push('rat_'+r);
-  n.forEach(img);
+  ['rat_1','mousetrap_open','mousetrap_closed','shadow'].forEach(img);
 };
-Scene_BFRatCatch.prototype.sp=function(name,x,y,scale,ax,ay,layer){
-  var s=new Sprite(img(name)); s.anchor.set(ax==null?.5:ax,ay==null?.5:ay); s.x=x; s.y=y; if(scale)s.scale.set(scale); (layer||this._world).addChild(s); return s;
+
+Scene_BFRatCatch.prototype.xy=function(gx,gy){
+  return {x:OX+gx*CELL+CELL/2,y:OY+gy*CELL+CELL/2};
+};
+Scene_BFRatCatch.prototype.mousePoint=function(){
+  var sx=Graphics.boxWidth/W,sy=Graphics.boxHeight/H;
+  return {x:TouchInput.x/sx,y:TouchInput.y/sy};
+};
+Scene_BFRatCatch.prototype.gridFromPoint=function(x,y){
+  return {x:Math.floor((x-OX)/CELL),y:Math.floor((y-OY)/CELL)};
+};
+Scene_BFRatCatch.prototype.inGrid=function(x,y){
+  return x>=0&&y>=0&&x<COLS&&y<ROWS;
+};
+Scene_BFRatCatch.prototype.barrierSet=function(){
+  var o={};
+  for(var i=0;i<this._barriers.length;i++){
+    var b=this._barriers[i]._bf;
+    if(b.held)continue;
+    o[key(b.x,b.y)]=true;
+  }
+  return o;
+};
+
+/* Deterministic left-hand wall navigation. The mouse does not know where
+ * holes are; entering one is a genuine player mistake and loses the attempt. */
+Scene_BFRatCatch.prototype.simulateMouse=function(maxSteps){
+  var blocks=this.barrierSet();
+  var dirs=[{dx:0,dy:-1},{dx:1,dy:0},{dx:0,dy:1},{dx:-1,dy:0}];
+  var x=START.x,y=START.y,d=1;
+  var seen={};
+  var path=[];
+  for(var step=0;step<maxSteps;step++){
+    path.push({x:x,y:y,dir:d});
+    if(HOLE_SET[key(x,y)])return {status:'hole',path:path};
+    if(x===TRAP.x&&y===TRAP.y)return {status:'success',path:path};
+    var sk=key(x,y)+'|'+d;
+    if(seen[sk])return {status:'loop',path:path};
+    seen[sk]=true;
+    var order=[(d+3)%4,d,(d+1)%4,(d+2)%4];
+    var moved=false;
+    for(var i=0;i<4;i++){
+      var nd=order[i],nx=x+dirs[nd].dx,ny=y+dirs[nd].dy;
+      if(this.inGrid(nx,ny)&&WALK[key(nx,ny)]&&!blocks[key(nx,ny)]){
+        x=nx;y=ny;d=nd;moved=true;break;
+      }
+    }
+    if(!moved)return {status:'dead',path:path};
+  }
+  return {status:'loop',path:path};
 };
 
 Scene_BFRatCatch.prototype.create=function(){
-  Scene_Base.prototype.create.call(this); this.preload();
-  this._world=new Sprite(); this.addChild(this._world);
-  this._bgLayer=new Sprite(); this._mechLayer=new Sprite(); this._objLayer=new Sprite(); this._windLayer=new Sprite(); this._ratLayer=new Sprite(); this._fxLayer=new Sprite();
-  this._world.addChild(this._bgLayer,this._mechLayer,this._objLayer,this._windLayer,this._ratLayer,this._fxLayer);
-  this._bg=new Sprite(img('background')); this._bg.x=0;this._bg.y=0;this._bgLayer.addChild(this._bg);
-  this.createMechanisms(); this.createTrap(); this.createCrates(); this.createCheese(); this.createRats(); this.createWind();
-  this.createHud(); this.resizeWorld(); this.refreshHud();
-  this.showMessage('Поставьте сыр в крысоловку.');
+  Scene_Base.prototype.create.call(this);
+  this.preload();
+  this._world=new Sprite();
+  this.addChild(this._world);
+  this._mazeLayer=new Sprite();
+  this._holeLayer=new Sprite();
+  this._objectLayer=new Sprite();
+  this._fxLayer=new Sprite();
+  this._world.addChild(this._mazeLayer,this._holeLayer,this._objectLayer,this._fxLayer);
+
+  this.drawMaze();
+  this.createHoles();
+  this.createTrap();
+  this.createBlocks();
+  this.createMouse();
+  this.createFX();
+  this.resizeWorld();
+  this.showMessage('Переставьте преграды и постройте безопасный путь.');
 };
 
-Scene_BFRatCatch.prototype.createMechanisms=function(){
-  // These coordinates are in the same 1280x720 space as the background.
-  this._leftSh=this.sp('shutter_frame_0',470,205,.86,.5,.5,this._mechLayer);
-  this._fan=this.sp('fan_frame_0',640,205,.92,.5,.5,this._mechLayer);
-  this._rightSh=this.sp('shutter_frame_0',810,205,.86,.5,.5,this._mechLayer);
+Scene_BFRatCatch.prototype.drawMaze=function(){
+  var bmp=new Bitmap(W,H),c=bmp._context;
+  c.save();
+  c.fillStyle='#171412';c.fillRect(0,0,W,H);
+  c.fillStyle='#242321';c.fillRect(OX,OY,COLS*CELL,ROWS*CELL);
+  /* Slight floor variation without a visible debug grid. */
+  for(var y=0;y<ROWS;y++){
+    for(var x=0;x<COLS;x++){
+      if(!WALK[key(x,y)])continue;
+      var px=OX+x*CELL,py=OY+y*CELL;
+      c.fillStyle=((x+y)%2===0)?'rgba(255,255,255,0.018)':'rgba(0,0,0,0.018)';
+      c.fillRect(px,py,CELL,CELL);
+    }
+  }
+  c.restore();
 
-  // Real fixed wheel on the pipe. Only this wheel rotates; its pivot is its exact image centre.
-  this._valveX=1182; this._valveY=405;
-  this._valve=this.sp('valve',this._valveX,this._valveY,1.0,.5,.5,this._mechLayer);
+  for(y=0;y<ROWS;y++){
+    for(x=0;x<COLS;x++){
+      if(!WALK[key(x,y)])continue;
+      var rx=OX+x*CELL,ry=OY+y*CELL;
+      var edges=[!WALK[key(x,y-1)],!WALK[key(x+1,y)],!WALK[key(x,y+1)],!WALK[key(x-1,y)]];
+      for(var e=0;e<4;e++){
+        if(!edges[e])continue;
+        var x1,y1,x2,y2;
+        if(e===0){x1=rx;y1=ry;x2=rx+CELL;y2=ry;}
+        if(e===1){x1=rx+CELL;y1=ry;x2=rx+CELL;y2=ry+CELL;}
+        if(e===2){x1=rx;y1=ry+CELL;x2=rx+CELL;y2=ry+CELL;}
+        if(e===3){x1=rx;y1=ry;x2=rx;y2=ry+CELL;}
+        c.save();
+        c.strokeStyle='rgba(0,0,0,0.96)';
+        c.lineWidth=Math.max(10,CELL*.24);
+        c.lineCap='square';
+        c.beginPath();c.moveTo(x1,y1);c.lineTo(x2,y2);c.stroke();
+        c.strokeStyle='rgba(129,110,87,0.68)';
+        c.lineWidth=3;
+        c.beginPath();c.moveTo(x1,y1+1);c.lineTo(x2,y2+1);c.stroke();
+        c.strokeStyle='rgba(235,205,165,0.10)';
+        c.lineWidth=1;
+        c.beginPath();c.moveTo(x1,y1-2);c.lineTo(x2,y2-2);c.stroke();
+        c.restore();
+      }
+    }
+  }
+
+  var sp=this.xy(START.x,START.y),tp=this.xy(TRAP.x,TRAP.y);
+  c.save();
+  c.fillStyle='rgba(245,205,128,0.08)';c.beginPath();c.arc(sp.x,sp.y,CELL*.33,0,Math.PI*2);c.fill();
+  c.fillStyle='rgba(211,69,48,0.08)';c.beginPath();c.arc(tp.x,tp.y,CELL*.33,0,Math.PI*2);c.fill();
+  c.restore();
+
+  this._mazeSp=new Sprite(bmp);
+  this._mazeLayer.addChild(this._mazeSp);
+};
+
+Scene_BFRatCatch.prototype.makeHole=function(){
+  var s=CELL-8;
+  var bmp=new Bitmap(s,s),c=bmp._context;
+  var cx=s/2,cy=s/2,r=s*.39;
+  c.save();
+  c.fillStyle='rgba(0,0,0,0.35)';
+  c.beginPath();c.arc(cx,cy+4,r+5,0,Math.PI*2);c.fill();
+  var g=c.createRadialGradient(cx-3,cy-4,3,cx,cy,r);
+  g.addColorStop(0,'#0a0908');g.addColorStop(.68,'#11100f');g.addColorStop(1,'#332217');
+  c.fillStyle=g;c.beginPath();c.arc(cx,cy,r,0,Math.PI*2);c.fill();
+  c.strokeStyle='#805b3d';c.lineWidth=3;c.beginPath();c.arc(cx,cy,r+1,0,Math.PI*2);c.stroke();
+  c.strokeStyle='rgba(238,191,131,0.26)';c.lineWidth=1.5;c.beginPath();c.arc(cx-1,cy-2,r-3,Math.PI*1.04,Math.PI*1.95);c.stroke();
+  c.restore();
+  var sp=new Sprite(bmp);sp.anchor.set(.5,.5);return sp;
+};
+
+Scene_BFRatCatch.prototype.createHoles=function(){
+  for(var i=0;i<HOLES.length;i++){
+    var p=this.xy(HOLES[i][0],HOLES[i][1]);
+    var sp=this.makeHole();sp.x=p.x;sp.y=p.y;sp._holeIndex=i;
+    this._holeLayer.addChild(sp);this._holeSps.push(sp);
+  }
 };
 
 Scene_BFRatCatch.prototype.createTrap=function(){
-  this._trapSp=this.sp('mousetrap_open',this._trap.x,this._trap.y,.62,.5,.72,this._objLayer);
-};
-Scene_BFRatCatch.prototype.createCrates=function(){
-  // Ground positions from the user's marked blue zone, near the tunnel mouth.
-  var starts=[[445,468],[545,468],[645,468]];
-  for(var i=0;i<starts.length;i++){
-    var p=starts[i],shadow=this.sp('shadow',p[0],p[1]+8,.19,.5,.5,this._objLayer);
-    shadow.alpha=.16;
-    var s=this.sp('crate',p[0],p[1],.58,.5,1,this._objLayer);
-    this._crates.push({x:p[0],y:p[1],homeX:p[0],homeY:p[1],w:64,h:58,held:false,sprite:s,shadow:shadow});
-  }
-};
-Scene_BFRatCatch.prototype.createCheese=function(){
-  this._cheese.sprite=this.sp('cheese',this._cheese.x,this._cheese.y,.62,.5,1,this._objLayer);
-};
-Scene_BFRatCatch.prototype.createRats=function(){
-  var starts=[[205,525],[305,590],[420,535],[865,530],[1005,585],[1150,525]];
-  for(var i=0;i<6;i++){
-    var p=starts[i],sh=this.sp('shadow',p[0],p[1]+8,.16,.5,.5,this._ratLayer); sh.alpha=.15;
-    var s=this.sp('rat_'+(i+1),p[0],p[1],.84,.5,1,this._ratLayer);
-    this._rats.push({id:i,x:p[0],y:p[1],homeX:p[0],homeY:p[1],side:i<3?0:1,speed:28+(i%3)*2,panic:0,angle:0,target:null,caught:false,committed:false,interested:0,seed:1.7*i,sprite:s,shadow:sh,wait:0,goalIndex:i});
-  }
+  var p=this.xy(TRAP.x,TRAP.y);
+  this._trapSp=new Sprite(img('mousetrap_open'));
+  this._trapSp.anchor.set(.5,.72);
+  this._trapSp.scale.set(.78);
+  this._trapSp.x=p.x;this._trapSp.y=p.y+7;
+  this._objectLayer.addChild(this._trapSp);
 };
 
-Scene_BFRatCatch.prototype.createWind=function(){
-  for(var side=0;side<2;side++){
-    for(var i=0;i<14;i++){
-      var s=new Sprite(img('wind_streak')); s.anchor.set(.05,.5); s.visible=false; s._side=side; s._i=i; s._p=i/14; s._lane=(i-6.5)*8; this._wind.push(s); this._windLayer.addChild(s);
-    }
-    var g=new Sprite(img('wind_glow')); g.anchor.set(.5,.5); g.alpha=0; g._side=side; g._glow=true; g.x=side===0?470:810; g.y=215; this._wind.push(g); this._windLayer.addChild(g);
-  }
+Scene_BFRatCatch.prototype.makeBlock=function(){
+  var s=CELL-8,bmp=new Bitmap(s,s),c=bmp._context;
+  c.save();
+  c.shadowColor='rgba(0,0,0,0.55)';c.shadowBlur=10;c.shadowOffsetY=6;
+  var g=c.createLinearGradient(0,0,s,s);
+  g.addColorStop(0,'#a56b3a');g.addColorStop(.48,'#774625');g.addColorStop(1,'#422411');
+  c.fillStyle=g;c.fillRect(5,5,s-10,s-10);c.restore();
+  c.save();
+  c.strokeStyle='rgba(26,12,5,0.96)';c.lineWidth=3;c.strokeRect(5,5,s-10,s-10);
+  c.strokeStyle='rgba(236,180,111,0.30)';c.lineWidth=2;
+  c.beginPath();c.moveTo(12,12);c.lineTo(s-12,s-13);c.stroke();
+  c.beginPath();c.moveTo(s-12,12);c.lineTo(12,s-13);c.stroke();
+  c.fillStyle='#d9c09a';
+  [[12,12],[s-12,12],[12,s-12],[s-12,s-12]].forEach(function(q){c.beginPath();c.arc(q[0],q[1],3,0,Math.PI*2);c.fill();});
+  c.restore();
+  var sp=new Sprite(bmp);sp.anchor.set(.5,.5);this._objectLayer.addChild(sp);return sp;
 };
 
-Scene_BFRatCatch.prototype.createHud=function(){
-  this._hudBmp=new Bitmap(W,H); this._hudSp=new Sprite(this._hudBmp); this.addChild(this._hudSp);
-};
-Scene_BFRatCatch.prototype.refreshHud=function(){
-  var b=this._hudBmp; b.clear(); b.fontFace='Arial'; b.textColor='#fff8e6'; b.outlineColor='#000'; b.outlineWidth=6;
-  b.fillOpacity=225; b.fillRect(30,24,625,62,'#070707'); b.fillOpacity=255; b.fontSize=27; b.drawText('ЗАГОНИТЕ ВСЕХ КРЫС В ЛОВУШКУ',48,38,590,34,'left');
-  b.fillOpacity=225; b.fillRect(1070,24,180,62,'#070707'); b.fillOpacity=255; b.fontSize=25; b.drawText('КРЫСЫ: '+this._caught+' / '+TOTAL,1075,40,170,34,'center');
-  b.fontSize=20; b.outlineWidth=5; b.drawText('ESC — выйти',1090,675,160,28,'right');
-  if(this._msgT>0&&this._msg){
-    b.fillOpacity=238; b.fillRect(300,635,680,55,'#050607'); b.fillOpacity=255; b.fontSize=24; b.outlineWidth=7; b.drawText(this._msg,315,648,650,30,'center');
+Scene_BFRatCatch.prototype.createBlocks=function(){
+  for(var i=0;i<BLOCK_COUNT;i++){
+    var p=BLOCK_START[i],sp=this.makeBlock();
+    sp._bf={x:p[0],y:p[1],homeX:p[0],homeY:p[1],held:false,index:i};
+    this.placeBlock(sp);this._barriers.push(sp);
   }
 };
-Scene_BFRatCatch.prototype.showMessage=function(t){ this._msg=t;this._msgT=170;this.refreshHud(); };
+Scene_BFRatCatch.prototype.placeBlock=function(sp){
+  var b=sp._bf,p=this.xy(b.x,b.y);sp.x=p.x;sp.y=p.y;
+};
+
+/* Use the project's original rat artwork. Keep the sprite opaque; do not stack
+ * duplicate rat sprites or generate a replacement procedural mouse. */
+Scene_BFRatCatch.prototype.makeMouse=function(){
+  var sp=new Sprite(img('rat_1'));
+  sp.anchor.set(.5,.94);
+  sp.scale.set(1.0,1.0);
+  sp.alpha=1.0;
+  return sp;
+};
+
+Scene_BFRatCatch.prototype.createMouse=function(){
+  var p=this.xy(START.x,START.y);
+  this._mouseShadow=new Sprite(img('shadow'));this._mouseShadow.anchor.set(.5,.5);
+  this._mouseShadow.scale.set(.20,.09);this._mouseShadow.alpha=.44;
+  this._mouseShadow.x=p.x;this._mouseShadow.y=p.y+CELL*.30;this._objectLayer.addChild(this._mouseShadow);
+
+  this._mouse=this.makeMouse();
+  this._mouse.x=p.x;this._mouse.y=p.y;this._mouse._bfBaseScale=1.0;
+  this._mouse._bfFacing=1;
+  this._mouse.alpha=1.0;
+  this._objectLayer.addChild(this._mouse);
+};
+
+Scene_BFRatCatch.prototype.createFX=function(){
+  this._fxSp=new Sprite(new Bitmap(W,H));this._fxLayer.addChild(this._fxSp);
+};
 Scene_BFRatCatch.prototype.resizeWorld=function(){
   var sx=Graphics.boxWidth/W,sy=Graphics.boxHeight/H;
-  this._world.scale.set(sx,sy); this._world.x=0;this._world.y=0;
-  // HUD stays in screen space so it remains readable.
-  this._hudSp.scale.set(1,1); this._hudSp.x=0;this._hudSp.y=0;
+  this._world.scale.set(sx,sy);this._world.x=0;this._world.y=0;
 };
-Scene_BFRatCatch.prototype.mouse=function(){ return {x:TouchInput.x/(Graphics.boxWidth/W),y:TouchInput.y/(Graphics.boxHeight/H)}; };
+Scene_BFRatCatch.prototype.showMessage=function(t){this._message=t;this._messageT=130;};
 
-Scene_BFRatCatch.prototype.playable=function(x,y,r){
-  if(!insidePoly(x,y,this._playPoly))return false;
-  return x>=120&&x<=1270&&y>=440&&y<=712;
-};
-Scene_BFRatCatch.prototype.boxRect=function(c){ return {x:c.x-c.w/2,y:c.y-c.h,w:c.w,h:c.h}; };
-Scene_BFRatCatch.prototype.blocked=function(x,y,r,ignore){
-  for(var i=0;i<this._crates.length;i++){ var c=this._crates[i]; if(c===ignore||c.held)continue; if(circleRect(x,y,r,this.boxRect(c)))return true; }
-  return false;
-};
-Scene_BFRatCatch.prototype.crateOverlaps=function(c,x,y){
-  var cx=x,cy=y;
-  if(!this.playable(cx,cy,35))return true;
-  var rr={x:cx-c.w/2,y:cy-c.h,w:c.w,h:c.h};
-  if(dist(cx,cy,this._trap.x,this._trap.y)<115)return true;
-  for(var i=0;i<this._crates.length;i++){var q=this._crates[i];if(q===c||q.held)continue;var qr=this.boxRect(q);if(rr.x<qr.x+qr.w&&rr.x+rr.w>qr.x&&rr.y<qr.y+qr.h&&rr.y+rr.h>qr.y)return true;}
-  return false;
-};
-
-Scene_BFRatCatch.prototype.windLeft=function(){ return this._fanOn&&this._valveMode<0&&this._shutters[0]; };
-Scene_BFRatCatch.prototype.windRight=function(){ return this._fanOn&&this._valveMode>0&&this._shutters[1]; };
-Scene_BFRatCatch.prototype.crossDraft=function(side){
-  if(!this._fanOn||this._valveMode===0)return false;
-  var open=side===0?this._shutters[0]:this._shutters[1];
-  var active=side===0?this.windLeft():this.windRight();
-  return open&&!active;
-};
-
-Scene_BFRatCatch.prototype.updateMechanisms=function(){
-  if(this._fanOn){this._fanTimer++;if(this._fanTimer%4===0)this._fanFrame=(this._fanFrame+1)%4;}else this._fanFrame=0;
-  this._fan.bitmap=img('fan_frame_'+this._fanFrame);
-  if(this._valveT<1){
-    this._valveT=Math.min(1,this._valveT+.11); this._valveAngle=this._valveFrom+(this._valveTo-this._valveFrom)*(1-(1-this._valveT)*(1-this._valveT));
+Scene_BFRatCatch.prototype.drawTransient=function(){
+  var b=this._fxSp.bitmap,c=b._context;b.clear();
+  if(this._messageT>0&&this._message){
+    var a=Math.min(1,this._messageT/24);
+    c.save();c.globalAlpha=a*.92;
+    c.fillStyle='rgba(5,5,5,0.73)';
+    c.fillRect(235,H-48,810,34);
+    c.fillStyle='#fff1da';c.font='18px Arial';c.textAlign='center';c.textBaseline='middle';
+    c.fillText(this._message,W/2,H-31);c.restore();
   }
-  this._valve.x=this._valveX; this._valve.y=this._valveY; this._valve.rotation=this._valveAngle;
-  for(var i=0;i<2;i++){
-    var goal=this._shutters[i]?1:0; this._shutterP[i]+=(goal-this._shutterP[i])*.20;
-    var p=this._shutterP[i],f=p<.20?0:p<.50?1:p<.80?2:3;
-    if(i===0)this._leftSh.bitmap=img('shutter_frame_'+f); else this._rightSh.bitmap=img('shutter_frame_'+f);
-  }
-  if(this._trap.busy>0){this._trap.busy--;if(this._trap.busy===0)this._trapSp.bitmap=img('mousetrap_open');}
-};
-
-Scene_BFRatCatch.prototype.updateWind=function(){
-  var active=[this.windLeft(),this.windRight()];
-  for(var i=0;i<this._wind.length;i++){
-    var s=this._wind[i],on=active[s._side];
-    if(s._glow){
-      s.visible=on; if(on){s.alpha=.45+.18*Math.sin(this._frame*.08);s.scale.set(.8+.05*Math.sin(this._frame*.04));}
-      continue;
+  if(this._hintT>0){
+    var occupied=this.barrierSet();
+    c.save();c.globalAlpha=clamp(this._hintT/36,0,1)*.80;
+    for(var i=0;i<SOCKETS.length;i++){
+      var q=this.xy(SOCKETS[i][0],SOCKETS[i][1]);
+      var occ=!!occupied[key(SOCKETS[i][0],SOCKETS[i][1])];
+      c.strokeStyle=occ?'rgba(210,80,58,.72)':'rgba(246,211,135,.84)';
+      c.lineWidth=2.5;c.setLineDash([7,6]);
+      c.strokeRect(q.x-CELL/2+5,q.y-CELL/2+5,CELL-10,CELL-10);
     }
-    if(!on){s.visible=false;continue;}
-    var side=s._side,t=(s._p+this._frame*.012+(s._i%3)*.002)%1;
-    var sx=side===0?470:810,sy=220,ex=side===0?650:630,ey=495;
-    s.x=sx+(ex-sx)*t; s.y=sy+(ey-sy)*t+s._lane;
-    s.rotation=Math.atan2(ey-sy,ex-sx);
-    s.alpha=.20+.78*Math.sin(Math.PI*t);
-    s.scale.set(.55+1.15*(1-Math.abs(t-.5)),.70);
-    s.visible=true;
+    c.restore();
+  }
+  /* Tiny animated warning pulse around holes. */
+  for(i=0;i<this._holeSps.length;i++){
+    var hs=this._holeSps[i];
+    hs.alpha=.90+.06*Math.sin(this._frame*.07+i*1.7);
+    hs.scale.set(1+Math.sin(this._frame*.06+i)*.015);
   }
 };
 
-Scene_BFRatCatch.prototype.pickPoint=function(r){
-  var pts=[[190,505],[265,565],[350,500],[450,565],[555,510],[655,555],[755,500],[860,560],[960,505],[1060,560],[1170,515],[1140,640],[1010,675],[870,650],[700,670],[530,650],[360,660],[240,625]];
-  return pts[(r.goalIndex+Math.floor(this._frame/240))%pts.length];
-};
-Scene_BFRatCatch.prototype.ratTarget=function(r){
-  if(r.caught)return {x:r.x,y:r.y};
-  if(!this._cheese.placed)return this.pickPoint(r);
-
-  // The cheese is mandatory: without it rats can NEVER be captured.
-  // Once airflow is aimed at a rat's side, that rat follows the scent corridor.
-  var activeSide=this._valveMode<0?0:(this._valveMode>0?1:-1);
-  var active=activeSide>=0 && this._fanOn && (activeSide===0?this._shutters[0]:this._shutters[1]);
-  var dCheese=dist(r.x,r.y,this._cheese.x,this._cheese.y);
-
-  if(!r.committed && active && r.side===activeSide){
-    r.interested=Math.min(1,(r.interested||0)+.025);
-    // Close enough to smell the bait: lock this rat onto the trap route.
-    if(dCheese<120 || r.interested>.72) r.committed=true;
-  } else {
-    r.interested=Math.max(0,(r.interested||0)-.008);
+Scene_BFRatCatch.prototype.validSocket=function(x,y,index){
+  var sk=key(x,y),isSocket=false;
+  for(var i=0;i<SOCKETS.length;i++)if(key(SOCKETS[i][0],SOCKETS[i][1])===sk){isSocket=true;break;}
+  if(!isSocket||!WALK[sk])return false;
+  if(sk===key(START.x,START.y)||sk===key(TRAP.x,TRAP.y)||HOLE_SET[sk])return false;
+  for(i=0;i<this._barriers.length;i++){
+    if(i===index)continue;
+    var b=this._barriers[i]._bf;
+    if(b.x===x&&b.y===y)return false;
   }
-
-  if(r.committed)return {x:this._trap.x,y:this._trap.y-4};
-  if(dCheese<140){
-    return {x:this._cheese.x+(r.side===0?-30:30),y:this._cheese.y+8};
-  }
-  return this.pickPoint(r);
-};
-Scene_BFRatCatch.prototype.moveRat=function(r,dt){
-  var target=this.ratTarget(r);
-  var otherSide=this.crossDraft(r.side===0?1:0);
-  if(otherSide&&!(this._cheese.placed&&(r.side===0?this.windLeft():this.windRight()))) {
-    r.panic=Math.min(1,r.panic+.06); target=r.side===0?{x:1160,y:560}:{x:180,y:560};
-  }else r.panic=Math.max(0,r.panic-.025);
-  var dx=target.x-r.x,dy=target.y-r.y,d=Math.max(1,Math.sqrt(dx*dx+dy*dy));
-  var spd=r.panic>.15?90:r.speed; var vx=dx/d*spd,vy=dy/d*spd;
-  if(r.panic<=.15&&this._cheese.placed&&(r.side===0?this.windLeft():this.windRight())){
-    var w=r.side===0?1:-1; vx+=w*13; vy+=5;
-  }
-  // Soft rat-to-rat separation
-  for(var i=0;i<this._rats.length;i++){if(this._rats[i]===r||this._rats[i].caught)continue;var q=this._rats[i],dd=dist(r.x,r.y,q.x,q.y);if(dd<38&&dd>0){var push=(38-dd)*1.2;vx+=(r.x-q.x)/dd*push;vy+=(r.y-q.y)/dd*push;}}
-  // Crate avoidance
-  for(var c=0;c<this._crates.length;c++){var box=this._crates[c];if(box.held)continue;var bx=box.x,by=box.y-box.h/2,dd2=dist(r.x,r.y,bx,by);if(dd2<70&&dd2>0){var pu=(70-dd2)*1.0;vx+=(r.x-bx)/dd2*pu;vy+=(r.y-by)/dd2*pu;}}
-  var nx=r.x+vx*dt,ny=r.y+vy*dt;
-  var ok=this.playable(nx,ny,16)&&!this.blocked(nx,ny,16,null);
-  if(ok){r.x=nx;r.y=ny;}else{
-    var ox=this.playable(nx,r.y,16)&&!this.blocked(nx,r.y,16,null);var oy=this.playable(r.x,ny,16)&&!this.blocked(r.x,ny,16,null);
-    if(ox)r.x=nx;else vx*=-.3; if(oy)r.y=ny;else vy*=-.3;
-    if(!ox&&!oy)r.goalIndex=(r.goalIndex+3)%18;
-  }
-  r.angle=Math.atan2(vy,vx);
-};
-Scene_BFRatCatch.prototype.updateRats=function(){
-  for(var i=0;i<this._rats.length;i++){
-    var r=this._rats[i]; if(r.caught)continue; this.moveRat(r,1/60);
-    r.sprite.x=r.x;r.sprite.y=r.y; r.shadow.x=r.x;r.shadow.y=r.y+7;
-    var base=Math.abs(r.sprite.scale.x)||.84; r.sprite.scale.x=r.angle>Math.PI/2||r.angle< -Math.PI/2?-base:base;
-    r.sprite.y=r.y+Math.sin(this._frame*.16+r.seed)*1.5;
-    r.sprite.rotation=Math.sin(this._frame*.08+r.seed)*.025;
-    if(this._trap.busy<=0&&this._cheese.placed&&r.committed&&dist(r.x,r.y,this._trap.x,this._trap.y)<62)this.captureRat(r);
-  }
+  return true;
 };
 
-Scene_BFRatCatch.prototype.captureRat=function(r){
-  if(r.caught)return; r.caught=true; this._caught++; r.sprite.visible=false;r.shadow.visible=false;
-  this._trap.busy=28; this._trapSp.bitmap=img('mousetrap_closed'); seOk();
-  if(this._caught<TOTAL){
-    this.showMessage('Щёлк! Крыса поймана.');
+Scene_BFRatCatch.prototype.hitBlock=function(p){
+  for(var i=this._barriers.length-1;i>=0;i--){
+    var s=this._barriers[i];if(s._bf.held)continue;
+    if(dist2(p.x,p.y,s.x,s.y)<(CELL*.46)*(CELL*.46))return i;
+  }
+  return -1;
+};
+Scene_BFRatCatch.prototype.beginDrag=function(index,p){
+  if(this._mode!=='build')return;
+  var sp=this._barriers[index],b=sp._bf;b.held=true;
+  this._drag={index:index,dx:p.x-sp.x,dy:p.y-sp.y};
+  sp.scale.set(1.08);sp.z=50;this._hintT=170;seCursor();
+};
+Scene_BFRatCatch.prototype.dragBlock=function(){
+  if(!this._drag)return;
+  var sp=this._barriers[this._drag.index],p=this.mousePoint();
+  sp.x=p.x-this._drag.dx;sp.y=p.y-this._drag.dy;
+};
+Scene_BFRatCatch.prototype.dropBlock=function(){
+  if(!this._drag)return;
+  var idx=this._drag.index,sp=this._barriers[idx],b=sp._bf,p=this.mousePoint();
+  var g=this.gridFromPoint(p.x,p.y);
+  if(this.validSocket(g.x,g.y,idx)){
+    b.x=g.x;b.y=g.y;this.placeBlock(sp);seOk();
+  }else{
+    this.placeBlock(sp);seBuzzer();this.showMessage('Сюда преграду поставить нельзя.');
+  }
+  b.held=false;sp.scale.set(1);sp.z=0;this._drag=null;this._hintT=0;
+};
+
+Scene_BFRatCatch.prototype.startPuzzle=function(){
+  if(this._mode!=='build')return;
+  var sim=this.simulateMouse(1200);
+  this._path=sim.path;this._pathIndex=0;this._stepT=0;this._pauseT=18;this._runResult=sim.status;
+  this._mode='run';this._won=false;this._lost=false;this._runStarted=true;
+  this._mouse.visible=true;this._mouse.alpha=1;this._trapSp.bitmap=img('mousetrap_open');
+  if(sim.status==='success')this.showMessage('Мышь побежала.');
+  else if(sim.status==='hole')this.showMessage('Осторожно — впереди нора!');
+  else if(sim.status==='dead')this.showMessage('Мышь упёрлась в тупик.');
+  else this.showMessage('Мышь пошла по маршруту...');
+  seOk();
+};
+
+Scene_BFRatCatch.prototype.resetMouseVisual=function(){
+  var p=this.xy(START.x,START.y);
+  this._mouse.visible=true;this._mouse.alpha=1;this._mouse.rotation=0;this._mouse.scale.set(this._mouse._bfBaseScale);this._mouse.scale.x=this._mouse._bfBaseScale;
+  this._mouse.x=p.x;this._mouse.y=p.y;
+  this._mouseShadow.x=p.x;this._mouseShadow.y=p.y+CELL*.30;
+};
+
+Scene_BFRatCatch.prototype.resetPuzzle=function(){
+  this._path=[];this._pathIndex=0;this._stepT=0;this._pauseT=0;this._runStarted=false;this._runResult='';this._won=false;this._lost=false;this._lossT=0;
+  this._mode='build';
+  this.resetMouseVisual();
+  this._trapSp.bitmap=img('mousetrap_open');
+  for(var i=0;i<this._barriers.length;i++){
+    var b=this._barriers[i]._bf;b.x=b.homeX;b.y=b.homeY;b.held=false;
+    this._barriers[i].visible=true;this._barriers[i].scale.set(1);this._barriers[i].z=0;this.placeBlock(this._barriers[i]);
+  }
+  seOk();this.showMessage('Положение головоломки сброшено.');
+};
+
+Scene_BFRatCatch.prototype.hint=function(){
+  if(this._mode!=='build')return;
+  this._hintT=180;
+  this.showMessage('Избегайте нор и перекрывайте ложные маршруты. Принцип движения мыши всегда одинаков.');
+  seCursor();
+};
+
+Scene_BFRatCatch.prototype.mouseTarget=function(){
+  if(this._pathIndex>=this._path.length-1)return null;
+  var a=this._path[this._pathIndex],b=this._path[this._pathIndex+1];
+  return {a:this.xy(a.x,a.y),b:this.xy(b.x,b.y),gx:b.x-a.x,gy:b.y-a.y};
+};
+
+Scene_BFRatCatch.prototype.updateMouse=function(){
+  if(this._mode!=='run'){
+    if(this._mouse){
+      var idle=.86+Math.sin(this._frame*.13)*.014;
+      this._mouse.scale.set(idle*this._mouse._bfFacing,idle);
+      this._mouseShadow.x=this._mouse.x;this._mouseShadow.y=this._mouse.y+CELL*.30;
+    }
     return;
   }
+  if(this._pauseT>0){
+    this._pauseT--;
+    var breathe=.86+Math.sin(this._frame*.25)*.025;
+    this._mouse.scale.set(breathe*this._mouse._bfFacing,breathe);
+    this._mouseShadow.x=this._mouse.x;this._mouseShadow.y=this._mouse.y+CELL*.30;
+    return;
+  }
+  if(this._pathIndex>=this._path.length-1){this.resolveRun();return;}
+  var tar=this.mouseTarget();
+  var speed=.105;
+  this._stepT+=speed;
+  var t=clamp(this._stepT,0,1),e=t*t*(3-2*t);
+  this._mouse.x=tar.a.x+(tar.b.x-tar.a.x)*e;
+  this._mouse.y=tar.a.y+(tar.b.y-tar.a.y)*e;
+  var facing=tar.gx<0?-1:tar.gx>0?1:this._mouse._bfFacing;
+  this._mouse._bfFacing=facing;
+  var stride=1+Math.sin(this._frame*.86)*.055;
+  this._mouse.scale.set(Math.abs(this._mouse._bfBaseScale)*facing,Math.abs(this._mouse._bfBaseScale)*stride);
+  this._mouse.rotation=Math.sin(this._frame*.22)*.028;
+  this._mouseShadow.x=this._mouse.x;this._mouseShadow.y=this._mouse.y+CELL*.30;
 
-  // Все крысы пойманы: это и есть выполнение задания.
-  // Монетка — необязательная скрытая находка и на квест не влияет.
-  this.showMessage('Все крысы пойманы. Поищите спрятанную фишку!');
-  if(this._token){ this._token.visible=true; this._token.alpha=.62; this._token.x=1038; this._token.y=612; }
-  this._finishTimer=240;
-  if(window.BF_QuestSystem && typeof window.BF_QuestSystem.minigameResult==='function'){
-    window.BF_QuestSystem.minigameResult('SUCCESS');
+  if(this._stepT>=1){
+    this._stepT=0;this._pathIndex++;
+    if(this._pathIndex>=this._path.length-1){this._pauseT=12;return;}
+    var i=this._pathIndex;
+    if(i>0&&i<this._path.length-1){
+      var pa=this._path[i-1],pb=this._path[i],pc=this._path[i+1];
+      var d1x=pb.x-pa.x,d1y=pb.y-pa.y,d2x=pc.x-pb.x,d2y=pc.y-pb.y;
+      if(d1x!==d2x||d1y!==d2y)this._pauseT=6;
+    }
   }
-  // После успешной поимки событие крыс больше нельзя запустить повторно.
-  if(origin.mapId&&origin.eventId){
-    $gameSelfSwitches.setValue([origin.mapId,origin.eventId,'A'],true);
-  }
-  // В квесте бармена отдельно открываем страницу возврата к Майку.
-  var mg = null;
-  try {
-    mg = window.BF_QuestSystem && window.BF_QuestSystem.game ? window.BF_QuestSystem.game()._minigame : null;
-  } catch(e) {}
-  if (mg && mg.questId === 'bartender') {
-    $gameSelfSwitches.setValue([7,8,'A'],true);
-  }
-};
-
-Scene_BFRatCatch.prototype.hit=function(p){
-  if(this._caught===TOTAL&&this._token.visible&&pointerHit(p.x,p.y,this._token.x,this._token.y,46))return{type:'token'};
-  if(!this._cheese.placed&&pointerHit(p.x,p.y,this._cheese.x,this._cheese.y-25,45))return{type:'cheese'};
-  for(var i=this._crates.length-1;i>=0;i--){var c=this._crates[i];if(!c.held&&pointerHit(p.x,p.y,c.x,c.y-c.h/2,48))return{type:'crate',obj:c};}
-  if(pointerHit(p.x,p.y,this._valveX,this._valveY,60))return{type:'valve'};
-  if(pointerHit(p.x,p.y,640,205,70))return{type:'fan'};
-  if(p.x>395&&p.x<545&&p.y>150&&p.y<280)return{type:'shutter',i:0};
-  if(p.x>735&&p.x<885&&p.y>150&&p.y<280)return{type:'shutter',i:1};
-  return null;
-};
-Scene_BFRatCatch.prototype.beginDrag=function(type,obj,p){this._drag={type:type,obj:obj,dx:p.x-obj.x,dy:p.y-obj.y};obj.held=true;};
-Scene_BFRatCatch.prototype.drag=function(){
-  if(!this._drag)return;var p=this.mouse(),o=this._drag.obj;o.x=clamp(p.x-this._drag.dx,150,1210);o.y=clamp(p.y-this._drag.dy,445,700);o.sprite.x=o.x;o.sprite.y=o.y;
-  if(o.shadow){o.shadow.x=o.x;o.shadow.y=o.y+8;}
-};
-Scene_BFRatCatch.prototype.dropDrag=function(){
-  if(!this._drag)return;this.drag();var d=this._drag,o=d.obj;
-  if(d.type==='cheese'){
-    if(dist(o.x,o.y,this._trap.x,this._trap.y-10)<78){o.x=this._trap.x;o.y=this._trap.y-13;this._cheese.placed=true;seOk();}
-    else{o.x=o.homeX;o.y=o.homeY;seBuzzer();}
-  }else if(d.type==='crate'){
-    if(this.crateOverlaps(o,o.x,o.y)){o.x=o.homeX;o.y=o.homeY;this.showMessage('Здесь ящик мешает проходу.');seBuzzer();}
-    else{seOk();}
-  }
-  o.held=false;o.sprite.x=o.x;o.sprite.y=o.y;if(o.shadow){o.shadow.x=o.x;o.shadow.y=o.y+8;}this._drag=null;
 };
 
-Scene_BFRatCatch.prototype.turnValve=function(){
-  var next=this._valveMode===-1?0:this._valveMode===0?1:-1;
-  this._valveMode=next;this._valveFrom=this._valveAngle;
-  this._valveTo=next<0?-Math.PI/2:next>0?Math.PI/2:0;this._valveT=0;
-  // The big valve controls the two shutters. No second button puzzle.
-  this._shutters=[next<0,next>0];
-  if(next<0)this.showMessage('Поток направлен влево: крысы слева слышат сыр.');
-  else if(next>0)this.showMessage('Поток направлен вправо: крысы справа слышат сыр.');
-  else this.showMessage('Вентиляция перекрыта.');
-  seOk();
+Scene_BFRatCatch.prototype.resolveRun=function(){
+  if(this._runResult==='success')this.finishWin();
+  else if(this._runResult==='hole')this.finishLoss('hole');
+  else if(this._runResult==='dead')this.finishLoss('dead');
+  else this.finishLoss('loop');
 };
-Scene_BFRatCatch.prototype.toggleFan=function(){
-  if(!this._cheese.placed){ this.showMessage('Сначала положите сыр в крысоловку.'); seBuzzer(); return; }
-  if(this._valveMode===0){ seBuzzer(); return; }
-  this._fanOn=!this._fanOn;this.showMessage(this._fanOn?'Вентилятор запущен.':'Вентилятор остановлен.');seOk();
-};
-Scene_BFRatCatch.prototype.toggleShutter=function(i){ seBuzzer(); };
-Scene_BFRatCatch.prototype.takeToken=function(){
-  if(this._tokenTaken)return;
-  this._tokenTaken=true;
-  if(this._token)this._token.visible=false;
-  if(window.BF_Inventory && typeof window.BF_Inventory.game==='function'){
-    window.BF_Inventory.game().add('coin',1);
-  } else if(window.$gameBFInventory && typeof window.$gameBFInventory.add==='function'){
-    window.$gameBFInventory.add('coin',1);
+
+Scene_BFRatCatch.prototype.finishWin=function(){
+  if(this._won)return;
+  this._won=true;this._mode='win';this._trapSp.bitmap=img('mousetrap_closed');this._pauseT=48;
+  if(!this._resultSent){
+    this._resultSent=true;
+    if(window.BF_QuestSystem&&typeof window.BF_QuestSystem.minigameResult==='function')window.BF_QuestSystem.minigameResult('SUCCESS');
+    if(origin.mapId&&origin.eventId)$gameSelfSwitches.setValue([origin.mapId,origin.eventId,'A'],true);
   }
-  this._finishTimer=1;
-  this._done=true;
-  seOk();
+  this.showMessage('ЩЁЛК! Мышь поймана.');
 };
-Scene_BFRatCatch.prototype.createToken=function(){
-  // Hidden easter egg: visible only after all rats are caught, but bright enough to be discoverable.
-  this._token=this.sp('token',1038,612,.42,.5,.5,this._fxLayer);
-  this._token.alpha=.62;
-  this._token.visible=false;
+
+Scene_BFRatCatch.prototype.finishLoss=function(kind){
+  if(this._lost||this._won)return;
+  this._lost=true;this._mode='loss';this._lossT=78;
+  if(kind==='hole'){
+    this._mouse.scale.set(0.10*this._mouse._bfFacing,0.10);this._mouse.alpha=.75;
+    this.showMessage('Мышь убежала в нору! R — полный сброс.');
+  }else if(kind==='dead'){
+    this.showMessage('Мышь упёрлась в тупик. Переставьте преграды.');
+  }else{
+    this.showMessage('Мышь зашла в петлю. Перестройте маршрут.');
+  }
+  seBuzzer();
 };
-Scene_BFRatCatch.prototype.resetPuzzle=function(){
-  this._caught=0;this._tokenTaken=false;this._done=false;this._fanOn=false;this._fanFrame=0;this._fanTimer=0;this._valveMode=0;this._valveAngle=0;this._valveFrom=0;this._valveTo=0;this._valveT=1;this._shutters=[false,false];this._shutterP=[0,0];this._trap.busy=0;this._trapSp.bitmap=img('mousetrap_open');this._finishTimer=0;this._tokenTaken=false;if(this._token){this._token.visible=false;this._token.alpha=.62;this._token.scale.set(.42);}
-  this._cheese.x=this._cheese.homeX;this._cheese.y=this._cheese.homeY;this._cheese.placed=false;this._cheese.held=false;this._cheese.sprite.x=this._cheese.x;this._cheese.sprite.y=this._cheese.y;
-  for(var i=0;i<this._crates.length;i++){var c=this._crates[i];c.x=c.homeX;c.y=c.homeY;c.held=false;c.sprite.visible=true;c.sprite.x=c.x;c.sprite.y=c.y;c.shadow.x=c.x;c.shadow.y=c.y+8;}
-  for(var j=0;j<this._rats.length;j++){var r=this._rats[j];r.x=r.homeX;r.y=r.homeY;r.caught=false;r.committed=false;r.interested=0;r.panic=0;r.sprite.visible=true;r.shadow.visible=true;r.sprite.x=r.x;r.sprite.y=r.y;r.goalIndex=j;r.vx=0;r.vy=0;}
-  this.showMessage('Головоломка сброшена.');
+
+Scene_BFRatCatch.prototype.afterLoss=function(){
+  if(this._lossT>0){this._lossT--;return;}
+  this._lost=false;this._mode='build';this._path=[];this._pathIndex=0;this._runResult='';this._stepT=0;this._pauseT=0;
+  this.resetMouseVisual();
+  this.showMessage('Попробуйте другую расстановку.');
 };
 
 Scene_BFRatCatch.prototype.updateInput=function(){
-  if(Input.isTriggered('escape')){SceneManager.pop();return;}
+  if(Input.isTriggered('escape')){seCancel();SceneManager.pop();return;}
   if(Input.isTriggered('r')){this.resetPuzzle();return;}
-  if(Input.isTriggered('s')){return;}
-  if(this._drag){if(TouchInput.isReleased())this.dropDrag();else this.drag();return;}
+  if(Input.isTriggered('s')){this.hint();return;}
+  if(Input.isTriggered('ok')||Input.isTriggered('enter')){if(this._mode==='build')this.startPuzzle();}
+
+  if(this._drag){
+    if(TouchInput.isReleased())this.dropBlock();else this.dragBlock();
+    return;
+  }
   if(!TouchInput.isTriggered())return;
-  var p=this.mouse(),h=this.hit(p);if(!h)return;
-  if(h.type==='token'){this.takeToken();return;}
-  if(h.type==='cheese'){this.beginDrag('cheese',this._cheese,p);return;}
-  if(h.type==='crate'){this.beginDrag('crate',h.obj,p);return;}
-  if(h.type==='fan'){this.toggleFan();return;}
-  if(h.type==='valve'){this.turnValve();return;}
-  if(h.type==='shutter'){this.toggleShutter(h.i);return;}
+  var p=this.mousePoint();
+  if(this._mode==='win'||this._mode==='run'||this._mode==='loss')return;
+  if(dist2(p.x,p.y,this._mouse.x,this._mouse.y)<48*48){this.startPuzzle();return;}
+  var hit=this.hitBlock(p);if(hit>=0)this.beginDrag(hit,p);
 };
 
 Scene_BFRatCatch.prototype.update=function(){
-  Scene_Base.prototype.update.call(this);this._frame++;this.resizeWorld();
-  this.updateMechanisms();this.updateWind();this.updateRats();this.updateInput();
-  if(this._msgT>0){this._msgT--;if(this._msgT%4===0)this.refreshHud();}
-  if(this._finishTimer>0){
-    this._finishTimer--;
-    if(this._token&&this._token.visible){
-      this._token.alpha=.48+.20*Math.sin(this._frame*.18);
-      var ps=.42+.035*Math.sin(this._frame*.12); this._token.scale.set(ps);
+  Scene_Base.prototype.update.call(this);
+  this._frame++;
+  this.resizeWorld();
+  this.updateMouse();
+  if(this._drag)this.dragBlock();
+  this.updateInput();
+  if(this._messageT>0)this._messageT--;
+  if(this._hintT>0)this._hintT--;
+  this.drawTransient();
+
+  if(this._mode==='win'){
+    if(this._pauseT>0){
+      this._pauseT--;
+      var fade=clamp(this._pauseT/48,0,1);
+      this._mouse.alpha=fade;
+      this._mouse.scale.set(.75*this._mouse._bfFacing+.15*.05, .80+0.10*fade);
+    }else{
+      SceneManager.pop();return;
     }
-    if(this._finishTimer===0){this._done=true;SceneManager.pop();return;}
   }
+  if(this._mode==='loss')this.afterLoss();
 };
 
-// Patch create() to create token after layers are ready.
-var _create=Scene_BFRatCatch.prototype.create;
-Scene_BFRatCatch.prototype.create=function(){_create.call(this);this.createToken();};
-
+/* RPG Maker integration. Only the actual launching event is modified on success. */
 var oldPC=Game_Interpreter.prototype.pluginCommand;
 Game_Interpreter.prototype.pluginCommand=function(command,args){
   oldPC.call(this,command,args);
-  var c=String(command||'').toUpperCase();var a=(args||[]).map(function(v){return String(v||'').toLowerCase();});
-  if((c==='BF_RATCATCH'||c==='RATCATCH')&&(!a.length||a[0]==='start')){
+  var c=String(command||'').toUpperCase();
+  var a=(args||[]).map(function(v){return String(v||'');});
+  if((c==='BF_RATCATCH'||c==='RATCATCH')&&(!a.length||String(a[0]).toLowerCase()==='start')){
+    var questId=a.length>1?a[1]:DEFAULT_QUEST;
     origin={mapId:this._mapId||$gameMap.mapId(),eventId:this._eventId||0};
     var allowed=true;
-    if(window.BF_QuestSystem && typeof window.BF_QuestSystem.minigameStart==='function'){
-      allowed=window.BF_QuestSystem.minigameStart('BF_RatCatch','bartender');
-    }
-    if(!allowed){
-      $gameMessage.add('Сначала поговорите с барменом.');
-      return;
-    }
-    this.setWaitMode(WAIT); SceneManager.push(Scene_BFRatCatch);
+    if(window.BF_QuestSystem&&typeof window.BF_QuestSystem.minigameStart==='function')allowed=window.BF_QuestSystem.minigameStart('BF_RatCatch',questId);
+    if(!allowed){$gameMessage.add('Сначала получите задание для этой мини-игры.');return;}
+    this.setWaitMode(WAIT);SceneManager.push(Scene_BFRatCatch);
   }
 };
+
 var oldWait=Game_Interpreter.prototype.updateWaitMode;
-Game_Interpreter.prototype.updateWaitMode=function(){if(this._waitMode===WAIT)return SceneManager._scene instanceof Scene_BFRatCatch;return oldWait.call(this);};
-window.BF_RatCatch_Start=function(){origin={mapId:$gameMap.mapId(),eventId:0};SceneManager.push(Scene_BFRatCatch);};
+Game_Interpreter.prototype.updateWaitMode=function(){
+  if(this._waitMode===WAIT)return SceneManager._scene instanceof Scene_BFRatCatch;
+  return oldWait.call(this);
+};
+
+window.BF_RatCatch_Start=function(questId){
+  var eid=0;try{eid=$gameMap._interpreter?$gameMap._interpreter._eventId:0;}catch(e){}
+  origin={mapId:$gameMap.mapId(),eventId:eid||0};
+  var q=questId||DEFAULT_QUEST,allowed=true;
+  if(window.BF_QuestSystem&&typeof window.BF_QuestSystem.minigameStart==='function')allowed=window.BF_QuestSystem.minigameStart('BF_RatCatch',q);
+  if(!allowed){$gameMessage.add('Сначала получите задание для этой мини-игры.');return;}
+  SceneManager.push(Scene_BFRatCatch);
+};
+
+window.Scene_BFRatCatch=Scene_BFRatCatch;
 
 })();
