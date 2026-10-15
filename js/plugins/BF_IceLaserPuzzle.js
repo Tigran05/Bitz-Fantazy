@@ -28,7 +28,14 @@
  *
  * ЦЕЛЬ:
  *   Note: <BF_ICE_TARGET>
- *   Все цели на карте должны быть освещены лучами.
+ *   Все цели на карте должны быть освещены лучами, а все ледяные блоки растаяны.
+ *
+ * КРИСТАЛЛ-НАГРАДА (ОТДЕЛЬНО ОТ ЛЕДЯНОГО БЛОКА):
+ *   Создайте отдельное событие с Note: <BF_ICE_CRYSTAL>.
+ *   Назначьте ему графику !Crystal (лист персонажа, индекс 3).
+ *   Плагин скрывает кристалл до решения головоломки, затем делает его видимым
+ *   и непроходимым. Подбор — отдельным нажатием Enter/Z или экранной кнопкой.
+ *   Команды: BF_IceCrystal show | hide | status.
  *
  * УПРАВЛЕНИЕ:
  *   Подойдите к объекту, посмотрите на него и нажмите Enter или Z.
@@ -50,6 +57,7 @@
     var TAG_MIRROR = 'BF_ICE_MIRROR';
     var TAG_MELT = 'BF_ICE_MELT';
     var TAG_TARGET = 'BF_ICE_TARGET';
+    var TAG_CRYSTAL = 'BF_ICE_CRYSTAL';
 
     var DIRS = {
         2: { dx: 0, dy: 1 },
@@ -89,7 +97,7 @@
 
     function isPuzzleObject(event) {
         return hasTag(event, TAG_LASER) || hasTag(event, TAG_MIRROR) ||
-            hasTag(event, TAG_MELT) || hasTag(event, TAG_TARGET);
+            hasTag(event, TAG_MELT) || hasTag(event, TAG_TARGET) || hasTag(event, TAG_CRYSTAL);
     }
 
     // Puzzle objects must never play RPG Maker's 3-frame walking animation.
@@ -113,7 +121,7 @@
     };
 
     function puzzleEvents() {
-        var found = { lasers: [], mirrors: [], melts: [], targets: [] };
+        var found = { lasers: [], mirrors: [], melts: [], targets: [], crystals: [] };
         if (!$gameMap || $gameMap.mapId() !== PUZZLE_MAP_ID) return found;
 
         $gameMap.events().forEach(function(event) {
@@ -139,6 +147,7 @@
                 });
             }
             if (hasTag(event, TAG_TARGET)) found.targets.push({ event: event });
+            if (hasTag(event, TAG_CRYSTAL)) found.crystals.push({ event: event });
         });
         return found;
     }
@@ -155,6 +164,7 @@
         if (!s.melt || typeof s.melt !== 'object') s.melt = {};
         if (typeof s.solved !== 'boolean') s.solved = false;
         if (typeof s.crystalCollected !== 'boolean') s.crystalCollected = false;
+        if (typeof s.crystalForcedVisible !== 'boolean') s.crystalForcedVisible = false;
         if (!isFinite(Number(s.lastRotateAt))) s.lastRotateAt = 0;
         if (typeof s.actionLatched !== 'boolean') s.actionLatched = false;
         return s;
@@ -220,16 +230,22 @@
         data.melts.forEach(function(item) {
             if (item.event.setDirectionFix) item.event.setDirectionFix(true);
             freezeEventAnimation(item.event);
-            // Former ice-block events now serve as the hidden master crystal.
-            // Keep hidden until all three targets are lit; hide permanently after pickup.
-            var collected = s.crystalCollected ||
-                $gameSelfSwitches.value([$gameMap.mapId(), item.event.eventId(), 'A']);
-            item.event.setTransparent(!s.solved || collected);
-            item.event.setThrough(true);
         });
         data.targets.forEach(function(item) {
             if (item.event.setDirectionFix) item.event.setDirectionFix(true);
             freezeEventAnimation(item.event);
+        });
+        data.crystals.forEach(function(item) {
+            var event = item.event;
+            var available = !!((s.solved || s.crystalForcedVisible) && !s.crystalCollected);
+            if (event.setImage && (!event.characterName || event.characterName() !== '!Crystal')) {
+                event.setImage('!Crystal', 3);
+            }
+            if (event.setDirectionFix) event.setDirectionFix(true);
+            if (event.setPriorityType) event.setPriorityType(1);
+            if (event.setThrough) event.setThrough(!available);
+            if (event.setTransparent) event.setTransparent(!available);
+            freezeEventAnimation(event);
         });
     }
 
@@ -305,6 +321,12 @@
             y += d.dy;
             result.segments.push({ x1: x - d.dx, y1: y - d.dy, x2: x, y2: y });
 
+            var melt = meltAt(x, y, data.melts);
+            if (melt) {
+                result.hits.push({ type: 'melt', event: melt.event });
+                break;
+            }
+
             var target = findAt(x, y, data.targets);
             if (target) {
                 result.targetHitIds.push(target.event.eventId());
@@ -350,29 +372,34 @@
         return count;
     }
 
-    function awardIceStone(data) {
+    function awardIceStone(data, crystal) {
         var BF = window.BF_QuestSystem;
-        var targetId = data.targets.length ? data.targets[0].event.eventId() : 0;
-
-        if (BF && BF.elemental && typeof BF.elemental.collect === 'function') {
-            BF.elemental.collect('ice', $gameMap.mapId(), targetId);
-            return;
+        var crystalId = crystal && crystal.event ? crystal.event.eventId() : 0;
+        var collected = false;
+        if (BF && BF.elementalStones && typeof BF.elementalStones.collect === 'function') {
+            collected = BF.elementalStones.collect('ice');
+        } else if (BF && typeof BF.elementalCollect === 'function') {
+            collected = BF.elementalCollect('ice');
+        } else {
+            // Standalone fallback when the shared elemental-stone plugin is absent.
+            if (BF && typeof BF.game === 'function') {
+                var game = BF.game();
+                if (game) {
+                    game._notes = game._notes || {};
+                    if (!game._notes.elemental_stone_ice) {
+                        game._notes.elemental_stone_ice = 'Получен: Ледяной кристалл.';
+                        collected = true;
+                    }
+                }
+            }
+            if (!collected && $gameVariables) {
+                var count = Number($gameVariables.value(51));
+                if (!isFinite(count) || count < 0) count = 0;
+                $gameVariables.setValue(51, Math.min(3, count + 1));
+                collected = true;
+            }
         }
-        if (BF && typeof BF.elementalCollect === 'function') {
-            BF.elementalCollect('ice');
-            return;
-        }
-
-        // Совместимый резервный вариант, если BF_ElementalStones не подключён.
-        var count = Number($gameVariables.value(51));
-        if (!isFinite(count) || count < 0) count = 0;
-        count = Math.min(3, count + 1);
-        $gameVariables.setValue(51, count);
-        if (count >= 3 && BF && typeof BF.game === 'function') {
-            var game = BF.game();
-            var q = game.get('forest_city');
-            if (q && q.status === 'active' && Number(q.step) === QUEST_STEP) game.nextStep(QUEST_ID);
-        }
+        return collected;
     }
 
     function screenPoint(x, y) {
@@ -417,12 +444,25 @@
         if (laser) return { type: 'laser', item: laser };
         var mirror = findAt(p.x, p.y, data.mirrors);
         if (mirror) return { type: 'mirror', item: mirror };
-        var state = puzzleState();
-        if (state && state.solved && !state.crystalCollected) {
-            var crystal = findAt(p.x, p.y, data.melts);
+        var s = puzzleState();
+        if (s && (s.solved || s.crystalForcedVisible) && !s.crystalCollected) {
+            var crystal = findAt(p.x, p.y, data.crystals);
             if (crystal) return { type: 'crystal', item: crystal };
         }
         return null;
+    }
+
+    function collectCrystal(item, data) {
+        var s = puzzleState();
+        if (!s || !item || !item.event || s.crystalCollected) return false;
+        s.crystalCollected = true;
+        s.crystalForcedVisible = false;
+        if (item.event.setTransparent) item.event.setTransparent(true);
+        if (item.event.setThrough) item.event.setThrough(true);
+        awardIceStone(data, item);
+        if (SoundManager && SoundManager.playRecovery) SoundManager.playRecovery();
+        if ($gameMessage && !$gameMessage.isBusy()) $gameMessage.add('Ты получил Ледяной кристалл!');
+        return true;
     }
 
     var Controller = {
@@ -440,11 +480,23 @@
 
             // The controller owns interaction input: one edge = one turn. A held key
             // (or a plugin that repeats triggerAction) cannot rotate the mechanism again.
-            var actionHeld = Input.isPressed('ok') || (TouchInput && TouchInput.isPressed());
+            var actionHeld = Input.isPressed('ok') ||
+                (window.BF_InteractionButton && window.BF_InteractionButton.isButtonVisible &&
+                 window.BF_InteractionButton.isButtonVisible() && TouchInput && TouchInput.isPressed());
             if (!actionHeld) s.actionLatched = false;
-            var actionPressed = Input.isTriggered('ok') || (TouchInput && TouchInput.isTriggered());
+            var actionPressed = false;
+            if (window.BF_InteractionButton && typeof window.BF_InteractionButton.consumeAction === 'function') {
+                actionPressed = window.BF_InteractionButton.consumeAction();
+            } else {
+                actionPressed = Input.isTriggered('ok');
+            }
             if (actionPressed && !s.actionLatched) {
-                if (rotateObjectInFront(data)) s.actionLatched = true;
+                var frontObject = objectInFront(data);
+                if (frontObject && frontObject.type === 'crystal') {
+                    if (collectCrystal(frontObject.item, data)) s.actionLatched = true;
+                } else if (rotateObjectInFront(data)) {
+                    s.actionLatched = true;
+                }
             }
 
             prepareObjects(data);
@@ -457,16 +509,47 @@
             this.frame++;
             var traces = data.lasers.map(function(laser) { return traceLaser(laser, data); });
 
-            // Ice-block events have been repurposed as the master crystal.
-            // They no longer melt or block laser beams.
-            if (!s.solved && everyTargetHit(data, traces)) {
-                s.solved = true;
-                awardIceStone(data);
-                data.targets.forEach(function(item) {
-                    $gameSelfSwitches.setValue([$gameMap.mapId(), item.event.eventId(), 'A'], true);
+            var hitCounts = {};
+            traces.forEach(function(trace) {
+                trace.hits.forEach(function(hit) {
+                    if (hit.type !== 'melt') return;
+                    var id = String(hit.event.eventId());
+                    hitCounts[id] = (hitCounts[id] || 0) + 1;
                 });
+            });
+
+            data.melts.forEach(function(item) {
+                var id = String(item.event.eventId());
+                if ($gameSelfSwitches.value([$gameMap.mapId(), item.event.eventId(), 'A'])) {
+                    delete s.melt[id];
+                    return;
+                }
+                var progress = Number(s.melt[id]) || 0;
+                if (hitCounts[id]) progress = Math.min(item.frames, progress + hitCounts[id]);
+                else progress = Math.max(0, progress - 2);
+                s.melt[id] = progress;
+                if (progress >= item.frames) {
+                    $gameSelfSwitches.setValue([$gameMap.mapId(), item.event.eventId(), 'A'], true);
+                    SoundManager.playRecovery();
+                }
+            });
+
+            if (data.melts.some(function(item) {
+                return $gameSelfSwitches.value([$gameMap.mapId(), item.event.eventId(), 'A']);
+            })) {
+                traces = data.lasers.map(function(laser) { return traceLaser(laser, data); });
+            }
+
+            if (!s.solved && activeMeltCount(data) === 0 && everyTargetHit(data, traces)) {
+                s.solved = true;
+                s.crystalCollected = false;
+                s.crystalForcedVisible = false;
                 if ($gameScreen) $gameScreen.startFlash([190, 235, 255, 150], 24);
-                SoundManager.playOk();
+                if (SoundManager && SoundManager.playOk) SoundManager.playOk();
+                if ($gameMessage && !$gameMessage.isBusy()) {
+                    $gameMessage.add('Механизмы ледяной пещеры заработали!');
+                    $gameMessage.add('На алтаре появился Ледяной кристалл. Подойди к нему и нажми действие, чтобы забрать его.');
+                }
             }
 
             drawBeams(this.graphics, traces);
@@ -496,22 +579,7 @@
             ? Graphics.frameCount : -1;
         if (frame >= 0 && Number(s.lastRotateFrame) === frame) return true;
 
-        if (target.type === 'crystal') {
-            s.crystalCollected = true;
-            var crystalEvent = target.item.event;
-            $gameSelfSwitches.setValue([$gameMap.mapId(), crystalEvent.eventId(), 'A'], true);
-            crystalEvent.setTransparent(true);
-            crystalEvent.setThrough(true);
-            var BF = window.BF_QuestSystem;
-            if (BF && typeof BF.game === 'function') {
-                var game = BF.game();
-                game._notes = game._notes || {};
-                game._notes.ice_crystal = 'Ледяная пещера: получен 1 волшебный кристалл.';
-            }
-            SoundManager.playRecovery();
-            if ($gameScreen) $gameScreen.startFlash([190, 235, 255, 120], 16);
-            return true;
-        } else if (target.type === 'laser') {
+        if (target.type === 'laser') {
             var laser = target.item;
             var laserId = String(laser.event.eventId());
             var currentLaserDir = Number(s.lasers[laserId]);
@@ -547,12 +615,13 @@
         reset: function() {
             if (!$gameSystem) return;
             $gameSystem._bfIceLaserState = {
-                lasers: {}, mirrors: {}, mirrorVisuals: {}, melt: {}, solved: false, crystalCollected: false,
+                lasers: {}, mirrors: {}, mirrorVisuals: {}, melt: {}, solved: false,
+                crystalCollected: false, crystalForcedVisible: false,
                 lastRotateAt: 0, lastRotateFrame: -1, actionLatched: false
             };
             if ($gameMap && $gameMap.mapId() === PUZZLE_MAP_ID) {
                 var data = puzzleEvents();
-                data.melts.concat(data.targets).forEach(function(item) {
+                data.melts.forEach(function(item) {
                     $gameSelfSwitches.setValue([$gameMap.mapId(), item.event.eventId(), 'A'], false);
                 });
             }
@@ -589,12 +658,36 @@
         _sceneTerminate.call(this);
     };
 
+    window.BF_IceCrystal = {
+        show: function() {
+            var s = puzzleState();
+            if (!s) return;
+            s.crystalForcedVisible = true;
+            s.crystalCollected = false;
+        },
+        hide: function() {
+            var s = puzzleState();
+            if (!s) return;
+            s.crystalForcedVisible = false;
+            s.solved = false;
+            s.crystalCollected = false;
+        },
+        status: function() {
+            var s = puzzleState();
+            console.log('[BF_IceCrystal]', { solved: !!(s && s.solved), forcedVisible: !!(s && s.crystalForcedVisible), collected: !!(s && s.crystalCollected), events: puzzleEvents().crystals.length });
+        }
+    };
+
     var _pluginCommand = Game_Interpreter.prototype.pluginCommand;
     Game_Interpreter.prototype.pluginCommand = function(command, args) {
         _pluginCommand.call(this, command, args);
-        if (String(command || '').toLowerCase() === 'bf_icelaser' &&
-            String((args || [])[0] || '').toLowerCase() === 'reset') {
-            window.BF_IceLaserPuzzle.reset();
+        var cmd = String(command || '').toLowerCase();
+        var arg = String((args || [])[0] || '').toLowerCase();
+        if (cmd === 'bf_icelaser' && arg === 'reset') window.BF_IceLaserPuzzle.reset();
+        if (cmd === 'bf_icecrystal') {
+            if (arg === 'show') window.BF_IceCrystal.show();
+            else if (arg === 'hide' || arg === 'reset') window.BF_IceCrystal.hide();
+            else if (arg === 'status') window.BF_IceCrystal.status();
         }
     };
 })();

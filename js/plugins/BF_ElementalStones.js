@@ -51,17 +51,24 @@
         id = String(id || '').toLowerCase();
         if (TYPES.indexOf(id) < 0) return false;
         var game = BF.game();
-        var q = game.get('forest_city');
-        if (!q || q.status !== 'active' || Number(q.step) !== 3) return false;
+        if (!game) return false;
         var s = normalize(game);
-        if (s[id]) return false;
+        if (s[id]) {
+            // Keep the journal repaired for older saves where the flag exists
+            // but the note was never written.
+            game._notes = game._notes || {};
+            var knownNames = { ice: 'Ледяной кристалл', curse: 'Кристалл проклятой пещеры', lava: 'Кристалл лавовой пещеры' };
+            if (!game._notes['elemental_stone_' + id]) game._notes['elemental_stone_' + id] = 'Получен: ' + knownNames[id] + '.';
+            return false;
+        }
         s[id] = true;
         game._notes = game._notes || {};
         var stoneNames = { ice: 'Ледяной кристалл', curse: 'Кристалл проклятой пещеры', lava: 'Кристалл лавовой пещеры' };
         game._notes['elemental_stone_' + id] = 'Получен: ' + stoneNames[id] + '.';
+        var q = game.get ? game.get('forest_city') : null;
         if (BF.elementalStones.count() >= 3) {
             game._notes.elemental_stones = 'Собраны все три волшебных кристалла. Нужно отнести их старцу.';
-            game.nextStep('forest_city');
+            if (q && q.status === 'active' && Number(q.step) === 3 && game.nextStep) game.nextStep('forest_city');
         }
         return true;
     };

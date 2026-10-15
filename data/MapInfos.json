@@ -39,7 +39,7 @@ null,
 null,
 null,
 {"id":39,"expanded":false,"name":"Харчевня Лили","order":36,"parentId":34,"scrollX":819,"scrollY":457},
-{"id":40,"expanded":false,"name":"Ледяная пещера","order":33,"parentId":35,"scrollX":1467.2727272727273,"scrollY":1430.1818181818182},
-{"id":41,"expanded":false,"name":"Проклятая пещера","order":34,"parentId":35,"scrollX":1081.3333333333333,"scrollY":1801.3333333333333},
+{"id":40,"expanded":false,"name":"Ледяная пещера","order":33,"parentId":35,"scrollX":1299,"scrollY":797},
+{"id":41,"expanded":false,"name":"Проклятая пещера","order":34,"parentId":35,"scrollX":1094,"scrollY":730},
 {"id":42,"expanded":false,"name":"Лавовая пещера","order":35,"parentId":35,"scrollX":1081.3333333333333,"scrollY":1040}
 ]

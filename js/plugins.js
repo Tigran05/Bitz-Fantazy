@@ -26,5 +26,7 @@ var $plugins =
 {"name":"BF_PanelPuzzle3","status":true,"description":"Bitz Fantasy — Пульт 3: код запуска","parameters":{}},
 {"name":"BF_LaserSecurity","status":true,"description":"Вращающиеся лазеры для стелс-участка Bitz Fantasy.","parameters":{"Return Map ID":"29","Return X":"19","Return Y":"19","Fade Delay":"30","Default Length":"7","Default Speed":"60","Default Width":"5","Hit Radius":"0.22","Color":"16724787"}},
 {"name":"BF_CameraSecurity","status":true,"description":"Bitz Fantasy — камеры и охрана для стелс-участков","parameters":{"Return Map":"29","Return X":"20","Return Y":"34","Alert SE":"Buzzer1"}},
-{"name":"BF_IceLaserPuzzle","status":true,"description":"Bitz Fantasy — ручная LaserBreak-подобная система Ледяной пещеры","parameters":{}}
+{"name":"BF_IceLaserPuzzle","status":true,"description":"Bitz Fantasy — событийная система ледяного лазера и зеркал","parameters":{}},
+{"name":"BF_CratePuzzle","status":true,"description":"Bitz Fantasy — Sokoban puzzle: pushable crates, target tiles, crystal reward, and reset switch.","parameters":{}},
+{"name":"BF_InteractionButton","status":true,"description":"Bitz Fantasy — contextual action button for touch devices (crates, levers, mirrors, lasers, crystals).","parameters":{"Show On Desktop":"true"}}
 ];
