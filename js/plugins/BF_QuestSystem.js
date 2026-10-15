@@ -174,6 +174,8 @@
             }
         }
         if(cfg.note && !this._notes['digit_'+id]) this._notes['digit_'+id]=cfg.note;
+        // После открытия сейфа заметки первого города больше не нужны.
+        if (id === 'safe' && typeof this.clearStageNotes === 'function') this.clearStageNotes();
         if(id==='intro' && BF.NOTES.workers) this._notes.workers = BF.NOTES.workers;
         if(id==='house' && BF.NOTES.house) this._notes.house = BF.NOTES.house;
         if(id==='safe' && BF.NOTES.accounting) this._notes.accounting = BF.NOTES.accounting;
@@ -192,6 +194,8 @@
         if(id==='evidence' && !this.isCompleted('vermillion')) this.start('vermillion');
         if(id==='vermillion' && !this.isCompleted('iron_cliff')) this.start('iron_cliff');
         if(id==='iron_cliff' && !this.isCompleted('vault')) this.start('vault');
+        // К этому моменту сюжет с передачей собранных камней старцу завершён.
+        if(id==='iron_cliff' && typeof this.clearStageNotes === 'function') this.clearStageNotes();
         if(id==='vault' && !this.isCompleted('forest_city')) this.start('forest_city');
         if(id==='forest_city' && !this.isCompleted('mansion')) this.start('mansion');
         if(id==='mansion' && !this.isCompleted('empire_tower')) this.start('empire_tower');
@@ -336,6 +340,12 @@
         return this._digits || {};
     };
     Game_BFQuests.prototype.getDigits = function() { return this._digits || {}; };
+
+    // Очищаем только временные заметки завершённого сюжетного этапа.
+    Game_BFQuests.prototype.clearStageNotes = function() {
+        this._notes = {};
+        this._digits = {};
+    };
 
     function normalizeGameBFQuests(game) {
         if (!game || typeof game !== 'object') return new Game_BFQuests();

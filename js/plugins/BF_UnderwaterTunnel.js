@@ -411,7 +411,16 @@
 
         setTimeout(function() {
             if (window.BF_QuestSystem && BF_QuestSystem.game()) {
-                BF_QuestSystem.game().minigameResult('SUCCESS');
+                var questGame = BF_QuestSystem.game();
+                questGame.minigameResult('SUCCESS');
+                // Баллон, ласты и маска больше не нужны в заметках после выхода из туннеля.
+                if (questGame._notes && typeof questGame._notes === 'object') {
+                    Object.keys(questGame._notes).forEach(function(key) {
+                        if (/nitrogen|balloon|cylinder|fins|flippers|mask|баллон|ласт|маск|vermillion/i.test(key + ' ' + questGame._notes[key])) {
+                            delete questGame._notes[key];
+                        }
+                    });
+                }
             }
 
             // После успешного прохождения туннеля скрываем охрану.

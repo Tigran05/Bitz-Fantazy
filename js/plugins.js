@@ -7,6 +7,8 @@ var $plugins =
 {"name":"BF_DetectiveMode","status":true,"description":"Bitz Fantasy — детективный режим: отключает боевые столкновения.","parameters":{}},
 {"name":"BF_QuestConfig","status":true,"description":"Bitz Fantasy — единый редактируемый конфиг всех квестов","parameters":{}},
 {"name":"BF_QuestSystem","status":true,"description":"Bitz Fantasy — единый движок квестов, шагов, журнала и мини-приложений","parameters":{}},
+{"name":"BF_ElementalStones","status":true,"description":"Bitz Fantasy — состояние трёх камней Лесного города","parameters":{}},
+{"name":"BF_IceLaserPuzzle","status":true,"description":"Bitz Fantasy — лазерная головоломка Ледяной пещеры","parameters":{}},
 {"name":"BF_QuestMap","status":true,"description":"Bitz Fantasy — красивая карта-пергамент: местность, игрок, текущая цель и маршрут","parameters":{}},
 {"name":"BF_Inventory","status":true,"description":"Bitz Fantasy — Inventory / Bag UI. Adds a separate inventory button beside the journal and gear menu.","parameters":{}},
 {"name":"BF_GearMenu","status":true,"description":"Bitz Fantasy - Полная замена стандартного меню на меню-шестерёнку.","parameters":{}},
@@ -23,5 +25,6 @@ var $plugins =
 {"name":"BF_PanelPuzzle2","status":true,"description":"Bitz Fantasy — Пульт 2: синхронизация шестерён","parameters":{}},
 {"name":"BF_PanelPuzzle3","status":true,"description":"Bitz Fantasy — Пульт 3: код запуска","parameters":{}},
 {"name":"BF_LaserSecurity","status":true,"description":"Вращающиеся лазеры для стелс-участка Bitz Fantasy.","parameters":{"Return Map ID":"29","Return X":"19","Return Y":"19","Fade Delay":"30","Default Length":"7","Default Speed":"60","Default Width":"5","Hit Radius":"0.22","Color":"16724787"}},
-{"name":"BF_CameraSecurity","status":true,"description":"Bitz Fantasy — камеры и охрана для стелс-участков","parameters":{"Return Map":"29","Return X":"20","Return Y":"34","Alert SE":"Buzzer1"}}
+{"name":"BF_CameraSecurity","status":true,"description":"Bitz Fantasy — камеры и охрана для стелс-участков","parameters":{"Return Map":"29","Return X":"20","Return Y":"34","Alert SE":"Buzzer1"}},
+{"name":"BF_IceLaserPuzzle","status":true,"description":"Bitz Fantasy — ручная LaserBreak-подобная система Ледяной пещеры","parameters":{}}
 ];
