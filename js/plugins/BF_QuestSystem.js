@@ -94,6 +94,7 @@
         this._data = {};
         this._notes = {};
         this._storyFlags = {};
+        this._elementalStones = {};
         this._digits = {};
         this._currentQuest = null;
         this._selectedQuest = null;
@@ -139,6 +140,9 @@
         this._currentQuest = id;
         this._selectedQuest = id;
         if (id === 'intro' && BF.NOTES.ape) this._notes.ape = BF.NOTES.ape;
+        if (id === 'forest_city' && typeof BF.syncElementalStones === 'function') {
+            BF.syncElementalStones(this);
+        }
         return true;
     };
 
@@ -216,7 +220,11 @@
         var q=this.get(id); if(!q || q.status!=='active') return false;
         var max=(BF.QUESTS[id].steps||[]).length-1;
         if(q.step>=max) return this.complete(id);
-        q.step++; return true;
+        q.step++;
+        if (id === 'forest_city' && typeof BF.syncElementalStones === 'function') {
+            BF.syncElementalStones(this);
+        }
+        return true;
     };
 
     // Iron Cliff: three independent control panels. They can be completed in any order.
@@ -354,7 +362,7 @@
         } else if ('__proto__' in game) {
             game.__proto__ = Game_BFQuests.prototype;
         }
-        ['_data', '_notes', '_storyFlags', '_digits'].forEach(function(key) {
+        ['_data', '_notes', '_storyFlags', '_digits', '_elementalStones'].forEach(function(key) {
             if (!game[key] || typeof game[key] !== 'object' || Array.isArray(game[key])) game[key] = {};
         });
         if (typeof game._currentQuest === 'undefined') game._currentQuest = null;
@@ -375,6 +383,75 @@
     };
     BF.minigameStart = function(appId, questId) { return BF.game().minigameStart(appId, questId); };
     BF.minigameResult = function(result) { return BF.game().minigameResult(result); };
+
+    // Общий учёт трёх сюжетных камней. Состояние сохраняется в сохранении
+    // и не зависит от порядка посещения ледяной, проклятой и лавовой пещер.
+    BF.syncElementalStones = function(game) {
+        game = game || BF.game();
+        if (!game) return false;
+        if (!game._elementalStones || typeof game._elementalStones !== 'object' ||
+            Array.isArray(game._elementalStones)) game._elementalStones = {};
+        var stones = game._elementalStones;
+        // Миграция старых сохранений: кристаллы могли быть получены до
+        // появления общего счётчика, но их записи уже лежат в личных заметках.
+        // Восстанавливаем флаги по этим существующим записям, не требуя
+        // повторно подбирать кристаллы в уже пройденных пещерах.
+        var notes = game._notes || {};
+        Object.keys(notes).forEach(function(key) {
+            var note = String(notes[key] || '').toLowerCase();
+            if (!note) return;
+            if (!stones.ice && note.indexOf('кристалл') >= 0 &&
+                (note.indexOf('ледян') >= 0 || note.indexOf('ледяной') >= 0)) {
+                stones.ice = true;
+            }
+            if (!stones.curse && note.indexOf('кристалл') >= 0 &&
+                note.indexOf('проклят') >= 0) {
+                stones.curse = true;
+            }
+            if (!stones.fire && note.indexOf('кристалл') >= 0 &&
+                (note.indexOf('огнен') >= 0 || note.indexOf('лавов') >= 0)) {
+                stones.fire = true;
+            }
+        });
+        var allCollected = !!(stones.ice && stones.curse && stones.fire);
+        var q = game.get('forest_city');
+        // q.step 3 = «Добыть три волшебных камня»; q.step 4 = «Принести камни старосте».
+        if (allCollected && q && q.status === 'active' && Number(q.step) === 3) {
+            q.step = 4;
+            game._notes.elemental_stones = 'Все три волшебных камня собраны. Нужно принести их старосте Лесного города.';
+            return true;
+        }
+        return false;
+    };
+    BF.elementalStones = {
+        collect: function(id) {
+            id = String(id || '').toLowerCase();
+            if (['ice', 'curse', 'fire'].indexOf(id) < 0) return false;
+            var game = BF.game();
+            if (!game._elementalStones || typeof game._elementalStones !== 'object' ||
+                Array.isArray(game._elementalStones)) game._elementalStones = {};
+            if (game._elementalStones[id]) return false;
+            game._elementalStones[id] = true;
+            game._notes = game._notes || {};
+            var labels = {
+                ice: 'Получен волшебный камень из Ледяной пещеры.',
+                curse: 'Получен волшебный камень из Проклятой пещеры.',
+                fire: 'Получен Огненный кристалл из Лавовой пещеры.'
+            };
+            game._notes['elemental_stone_' + id] = labels[id];
+            BF.syncElementalStones(game);
+            return true;
+        },
+        count: function() {
+            var game = BF.game();
+            var stones = game._elementalStones || {};
+            return ['ice', 'curse', 'fire'].filter(function(id) { return !!stones[id]; }).length;
+        },
+        has: function(id) {
+            var game = BF.game();
+            return !!(game._elementalStones && game._elementalStones[String(id || '').toLowerCase()]);
+        }
+    };
 
     // Save/load integration
     var _createGameObjects = DataManager.createGameObjects;
@@ -504,6 +581,9 @@
         this.contents.outlineWidth = 2;
 
         var game = BF.game(), self = this;
+        // Синхронизируем также при открытии/обновлении книги, чтобы старые
+        // сохранения с уже записанными находками сразу получили правильный этап.
+        if (typeof BF.syncElementalStones === 'function') BF.syncElementalStones(game);
         var scale = this._bookScale || 1;
         var ox = this._bookX || 0;
         var oy = this._bookY || 0;

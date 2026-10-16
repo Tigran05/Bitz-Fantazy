@@ -8,13 +8,13 @@
  * @desc Show the contextual action button on desktop too (useful for testing; disable if unwanted).
  *
  * @help
- * Put this plugin BELOW BF_CratePuzzle.js and BF_IceLaserPuzzle.js in Plugin Manager.
- * A round ACTION button appears only when the player faces a supported puzzle object
- * on the tile directly in front of them. Tap it once to perform one action. Keyboard OK/Z/Enter
+ * Put this plugin BELOW BF_CratePuzzle.js, BF_IceLaserPuzzle.js and BF_LavaCave_Puzzle.js in Plugin Manager.
+ * On touch devices, a round ACTION button appears when the player faces an adjacent
+ * supported puzzle object. Tap it once to perform one action. Keyboard OK/Z/Enter
  * continues to work. A held touch does not repeat the action.
  *
  * Recognized tags include:
- * <BF_CRATE>, <BF_CRATE_RESET>, <BF_CRATE_CRYSTAL>,
+ * <BF_CRATE>, <BF_CRATE_RESET>, <BF_CRATE_CRYSTAL>, <BF_LAVA_CRATE>,
  * <BF_ICE_LASER ...>, <BF_ICE_MIRROR ...>, <BF_ICE_MELT ...>.
  * Generic events can opt in with <BF_INTERACT>.
  */
@@ -22,7 +22,7 @@
     'use strict';
     var params = PluginManager.parameters('BF_InteractionButton');
     var SHOW_DESKTOP = String(params['Show On Desktop'] || 'true') === 'true';
-    var TAG = /<\s*(BF_CRATE|BF_CRATE_RESET|BF_CRATE_CRYSTAL|BF_ICE_LASER|BF_ICE_MIRROR|BF_ICE_MELT|BF_ICE_CRYSTAL|BF_INTERACT)(?=[\s>])/i;
+    var TAG = /<\s*(BF_CRATE|BF_CRATE_RESET|BF_CRATE_CRYSTAL|BF_LAVA_CRATE|BF_LAVA_CRYSTAL|BF_LAVA_FINAL_CRYSTAL|BF_LAVA_PRESSURE|BF_LAVA_SWITCH|BF_LAVA_RESET|BF_ICE_CRYSTAL|BF_ICE_LASER|BF_ICE_MIRROR|BF_ICE_MELT|BF_INTERACT)(?=[\s:>])/i;
     var pending = false;
     var sprite = null;
     var lastTapFrame = -1;
@@ -41,15 +41,21 @@
     function tagged(ev) { return TAG.test(eventText(ev)); }
     function adjacentObject() {
         if (!$gameMap || !$gamePlayer || !$gamePlayer.canMove() || ($gameMessage && $gameMessage.isBusy())) return null;
-        // Show the action button ONLY for a tagged object directly in front
-        // of the player. No side/back detection: the player must face the target.
-        var d = $gamePlayer.direction();
-        var x = $gameMap.roundXWithDirection($gamePlayer.x, d);
-        var y = $gameMap.roundYWithDirection($gamePlayer.y, d);
-        var events = $gameMap.eventsXy(x, y);
-        for (var i = 0; i < events.length; i++) {
-            if (events[i].isTransparent && events[i].isTransparent()) continue;
-            if (tagged(events[i])) return { event: events[i], direction: d };
+        // Prefer the event directly in front. If the player is beside an object
+        // but facing away, still show the contextual button and turn toward it
+        // when the button is tapped. This works with touch controls and desktop tests.
+        var dirs = [$gamePlayer.direction(), 2, 4, 6, 8];
+        var seen = {};
+        for (var i = 0; i < dirs.length; i++) {
+            var d = dirs[i];
+            if (seen[d]) continue;
+            seen[d] = true;
+            var x = $gameMap.roundXWithDirection($gamePlayer.x, d);
+            var y = $gameMap.roundYWithDirection($gamePlayer.y, d);
+            var events = $gameMap.eventsXy(x, y);
+            for (var j = 0; j < events.length; j++) {
+                if (tagged(events[j])) return { event: events[j], direction: d };
+            }
         }
         return null;
     }
