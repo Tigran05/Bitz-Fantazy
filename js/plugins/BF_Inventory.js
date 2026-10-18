@@ -532,7 +532,8 @@
         this.contents.fontBold = true;
         this.contents.fontSize = 15;
         this.changeTextColor('#6b492d');
-        this.drawText('Количество: ×' + entry.amount, x+18, top+202, w-36, 'left');
+        var quantityLabel = window.BF_Language && BF_Language.translateUI ? BF_Language.translateUI('Количество: ') : 'Количество: ';
+        this.drawText(quantityLabel + '×' + entry.amount, x+18, top+202, w-36, 'left');
 
         this.contents.fontBold = false;
         this.contents.fontSize = 15;
@@ -544,7 +545,8 @@
     };
 
     Window_BFInventory.prototype.wrapText = function(text, max) {
-        var words = String(text).split(' ');
+        var ui = window.BF_Language && BF_Language.translateUI ? BF_Language.translateUI(text) : text;
+        var words = String(ui).split(' ');
         var lines = [], line = '';
         for (var i=0;i<words.length;i++) {
             var test = line ? line + ' ' + words[i] : words[i];

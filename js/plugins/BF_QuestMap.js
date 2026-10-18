@@ -8,6 +8,8 @@
 (function(){
 'use strict';
 var M=window.BF_QuestMap=window.BF_QuestMap||{};M.version='bartender-clean-1.0';
+function tr(text){return window.BF_Language&&BF_Language.translateUI?BF_Language.translateUI(text):text;}
+function tr(text){return window.BF_Language&&BF_Language.translateUI?BF_Language.translateUI(text):text;}
 function cfg(id){return window.BF_QuestConfig&&BF_QuestConfig.QUESTS?BF_QuestConfig.QUESTS[id]:null;}
 function selected(){
     if(!window.BF_QuestSystem||!BF_QuestSystem.game)return null;
@@ -32,14 +34,14 @@ Scene_BFMap.prototype.create=function(){
 };
 Scene_BFMap.prototype.refresh=function(){
     var b=this._panel.bitmap,w=b.width,h=b.height;b.clear();b.fillAll('#1f1710');round(b,6,6,w-12,h-12,18,'#ead8aa','#8a5b31',4);round(b,17,17,w-34,h-34,14,'#f0dfb3','#b0804e',2);
-    b.font='bold 31px Georgia';b.textColor='#4e2e1b';b.drawText('КАРТА',40,32,250,40,'left');
-    var info=$dataMapInfos&&$dataMapInfos[$gameMap.mapId()]?$dataMapInfos[$gameMap.mapId()].name:'';if(info){b.font='italic 17px Georgia';b.textColor='#795436';b.drawText('— '+info+' —',190,39,430,25,'left');}
+    b.font='bold 31px Georgia';b.textColor='#4e2e1b';b.drawText(tr('КАРТА'),40,32,250,40,'left');
+    var info=$dataMapInfos&&$dataMapInfos[$gameMap.mapId()]?$dataMapInfos[$gameMap.mapId()].name:'';if(info){b.font='italic 17px Georgia';b.textColor='#795436';b.drawText('— '+tr(info)+' —',190,39,430,25,'left');}
     var mx=40,my=105,mw=w-330,mh=h-150;round(b,mx,my,mw,mh,8,'#ead7a8','#91643b',3);this.drawTerrain(b,mx+8,my+8,mw-16,mh-16);
     var sideX=mx+mw+20,sideW=w-sideX-24;round(b,sideX,my,sideW,mh,10,'rgba(112,79,45,.10)','#9b7047',2);
-    b.font='bold 16px Georgia';b.textColor='#5a361e';b.drawText('ТЕКУЩАЯ ЦЕЛЬ',sideX+10,my+18,sideW-20,24,'center');
-    var t=selected(),title='Нет цели',step='Откройте книгу.';if(t){var c=cfg(t.id),g=BF_QuestSystem.game(),q=g.get(t.id);title=c.title;step=(c.steps||[])[q.step]||'';}
-    b.font='bold 18px Georgia';b.textColor='#4c2c19';b.drawText(title,sideX+10,my+62,sideW-20,60,'center');line(b,sideX+15,my+130,sideX+sideW-15,my+130,1,'#9b7047',.75);b.font='bold 14px Georgia';b.textColor='#765033';b.drawText('ШАГ',sideX+10,my+145,sideW-20,22,'center');b.font='16px Georgia';b.textColor='#4d3423';b.drawText(step,sideX+12,my+180,sideW-24,120,'center');
-    b.font='bold 14px Georgia';b.textColor='#5d3b1e';b.drawText('● ВЫ',sideX+25,my+330,sideW-50,22,'left');b.drawText('● ЦЕЛЬ',sideX+25,my+360,sideW-50,22,'left');b.drawText('━ МАРШРУТ',sideX+25,my+390,sideW-50,22,'left');
+    b.font='bold 16px Georgia';b.textColor='#5a361e';b.drawText(tr('ТЕКУЩАЯ ЦЕЛЬ'),sideX+10,my+18,sideW-20,24,'center');
+    var t=selected(),title=tr('Нет цели'),step=tr('Откройте книгу.');if(t){var c=cfg(t.id),g=BF_QuestSystem.game(),q=g.get(t.id);title=tr(c.title);step=tr((c.steps||[])[q.step]||'');}
+    b.font='bold 18px Georgia';b.textColor='#4c2c19';b.drawText(title,sideX+10,my+62,sideW-20,60,'center');line(b,sideX+15,my+130,sideX+sideW-15,my+130,1,'#9b7047',.75);b.font='bold 14px Georgia';b.textColor='#765033';b.drawText(tr('ШАГ'),sideX+10,my+145,sideW-20,22,'center');b.font='16px Georgia';b.textColor='#4d3423';b.drawText(step,sideX+12,my+180,sideW-24,120,'center');
+    b.font='bold 14px Georgia';b.textColor='#5d3b1e';b.drawText(tr('● ВЫ'),sideX+25,my+330,sideW-50,22,'left');b.drawText(tr('● ЦЕЛЬ'),sideX+25,my+360,sideW-50,22,'left');b.drawText(tr('━ МАРШРУТ'),sideX+25,my+390,sideW-50,22,'left');
     b.font='bold 22px Georgia';b.textColor='#5b321e';b.drawText('×',w-70,28,45,40,'center');this._close={x:w-70,y:48};
 };
 Scene_BFMap.prototype.drawTerrain=function(b,x,y,w,h){
@@ -50,9 +52,9 @@ Scene_BFMap.prototype.drawTerrain=function(b,x,y,w,h){
         if(solid){b.paintOpacity=175;b.fillRect(px,py,Math.ceil(scale)+1,Math.ceil(scale)+1,'#756149');b.paintOpacity=255;}
     }
     var t=selected(),resolved=null;if(t&&t.data){var d=t.data;if(Number(d.mapId)===$gameMap.mapId()){if(d.eventId){var e=$gameMap.event(Number(d.eventId));if(e)resolved={x:e.x,y:e.y};}else if(d.x!=null&&d.y!=null)resolved={x:Number(d.x),y:Number(d.y)};}}
-    if(resolved){var path=route($gamePlayer.x,$gamePlayer.y,resolved.x,resolved.y);for(var i=1;i<path.length;i++){var a=path[i-1],c=path[i];line(b,ox+a.x*scale+scale/2,oy+a.y*scale+scale/2,ox+c.x*scale+scale/2,oy+c.y*scale+scale/2,Math.max(2,scale*.28),'#9a6b2f',.75);}b.drawCircle(ox+resolved.x*scale+scale/2,oy+resolved.y*scale+scale/2,Math.max(7,scale*.7),'#7d3f23');b.font='bold 13px Georgia';b.textColor='#6e361f';b.drawText('ЦЕЛЬ',ox+resolved.x*scale+scale/2+12,oy+resolved.y*scale+scale/2-10,80,20,'left');}
-    if(t&&(!t.data||Number(t.data.mapId)!==$gameMap.mapId())){b.font='13px Georgia';b.textColor='#6f5131';b.drawText('Цель находится в другой локации',x+10,y+h-24,w-20,20,'center');}
-    var pxp=ox+$gamePlayer.x*scale+scale/2,pyp=oy+$gamePlayer.y*scale+scale/2;b.drawCircle(pxp,pyp,Math.max(7,scale*.65),'#4c7b9a');b.font='bold 13px Georgia';b.textColor='#3b6179';b.drawText('ВЫ',pxp+11,pyp-10,50,20,'left');
+    if(resolved){var path=route($gamePlayer.x,$gamePlayer.y,resolved.x,resolved.y);for(var i=1;i<path.length;i++){var a=path[i-1],c=path[i];line(b,ox+a.x*scale+scale/2,oy+a.y*scale+scale/2,ox+c.x*scale+scale/2,oy+c.y*scale+scale/2,Math.max(2,scale*.28),'#9a6b2f',.75);}b.drawCircle(ox+resolved.x*scale+scale/2,oy+resolved.y*scale+scale/2,Math.max(7,scale*.7),'#7d3f23');b.font='bold 13px Georgia';b.textColor='#6e361f';b.drawText(tr('ЦЕЛЬ'),ox+resolved.x*scale+scale/2+12,oy+resolved.y*scale+scale/2-10,80,20,'left');}
+    if(t&&(!t.data||Number(t.data.mapId)!==$gameMap.mapId())){b.font='13px Georgia';b.textColor='#6f5131';b.drawText(tr('Цель находится в другой локации'),x+10,y+h-24,w-20,20,'center');}
+    var pxp=ox+$gamePlayer.x*scale+scale/2,pyp=oy+$gamePlayer.y*scale+scale/2;b.drawCircle(pxp,pyp,Math.max(7,scale*.65),'#4c7b9a');b.font='bold 13px Georgia';b.textColor='#3b6179';b.drawText(tr('ВЫ'),pxp+11,pyp-10,50,20,'left');
 };
 function passableAny(x,y){if(x<0||y<0||x>=$gameMap.width()||y>=$gameMap.height())return false;return pass(x,y,8)||pass(x,y,6)||pass(x,y,2)||pass(x,y,4);}
 Scene_BFMap.prototype.update=function(){Scene_Base.prototype.update.call(this);if(Input.isTriggered('cancel')||TouchInput.isCancelled()){SceneManager.pop();return;}if(TouchInput.isTriggered()){var x=TouchInput.x,y=TouchInput.y;if(this._close){var cx=this._panel.x+this._close.x,cy=this._panel.y+this._close.y;if(Math.sqrt((x-cx)*(x-cx)+(y-cy)*(y-cy))<50)SceneManager.pop();}}};

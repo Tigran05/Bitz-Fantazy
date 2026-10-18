@@ -557,7 +557,8 @@
 
     Window_BFJournalText.prototype.wrapText = function(text, maxWidth, fontSize) {
         var out = [], line = '';
-        var words = String(text == null ? '' : text).split(/\s+/);
+        var ui = window.BF_Language && BF_Language.translateUI ? BF_Language.translateUI(text) : text;
+        var words = String(ui == null ? '' : ui).split(/\s+/);
         this.contents.fontSize = Math.max(12, Math.round(fontSize * (this._bookScale || 1)));
         for (var i = 0; i < words.length; i++) {
             if (!words[i]) continue;
@@ -649,7 +650,7 @@
                 active.forEach(function(id) {
                     var cfg = BF.configFor(id), q = game.get(id);
                     if (!cfg || !q) return;
-                    title('• ' + cfg.title, L, ly, LW);
+                    title('• ' + (window.BF_Language && BF_Language.translateUI ? BF_Language.translateUI(cfg.title) : cfg.title), L, ly, LW);
                     ly += 40;
                     var activeStepText = ((cfg.steps || [])[q.step] || '');
                     if (id === 'iron_cliff' && Number(q.step) === 4) {
@@ -666,7 +667,7 @@
             } else {
                 var sc = BF.configFor(selected), sq = game.get(selected);
                 if (sc && sq) {
-                    title(sc.title, R, 145, RW);
+                    title(window.BF_Language && BF_Language.translateUI ? BF_Language.translateUI(sc.title) : sc.title, R, 145, RW);
                     var ry = wrapped(sc.description || '', R, 185, RW, 30);
                     rule(R, ry + 4, RW);
                     title('Текущий шаг', R, ry + 34, RW);
@@ -723,7 +724,7 @@
                 done.forEach(function(id) {
                     var cfg = BF.configFor(id);
                     if (!cfg) return;
-                    title('✓ ' + cfg.title, L, dy, LW);
+                    title('✓ ' + (window.BF_Language && BF_Language.translateUI ? BF_Language.translateUI(cfg.title) : cfg.title), L, dy, LW);
                     dy += 44;
                 });
             }
@@ -788,7 +789,8 @@
         this._tabHit = [];
         for (var i = 0; i < tabs.length; i++) {
             var t = tabs[i];
-            b.drawText(t.label, Math.round(ox+t.x*s), Math.round(oy+(t.y+27)*s), Math.round(t.w*s), Math.max(28,Math.round(34*s)), 'center');
+            var label = window.BF_Language && BF_Language.translateUI ? BF_Language.translateUI(t.label) : t.label;
+            b.drawText(label, Math.round(ox+t.x*s), Math.round(oy+(t.y+27)*s), Math.round(t.w*s), Math.max(28,Math.round(34*s)), 'center');
             this._tabHit.push({
                 x:Math.round(ox+t.x*s), y:Math.round(oy+t.y*s),
                 w:Math.round(t.w*s), h:Math.round(t.h*s)
