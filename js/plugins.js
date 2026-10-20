@@ -9,7 +9,6 @@ var $plugins =
 {"name":"BF_QuestConfig","status":true,"description":"Bitz Fantasy — единый редактируемый конфиг всех квестов","parameters":{}},
 {"name":"BF_QuestSystem","status":true,"description":"Bitz Fantasy — единый движок квестов, шагов, журнала и мини-приложений","parameters":{}},
 {"name":"BF_ElementalStones","status":true,"description":"Bitz Fantasy — состояние трёх камней Лесного города","parameters":{}},
-{"name":"BF_IceLaserPuzzle","status":true,"description":"Bitz Fantasy — лазерная головоломка Ледяной пещеры","parameters":{}},
 {"name":"BF_QuestMap","status":true,"description":"Bitz Fantasy — красивая карта-пергамент: местность, игрок, текущая цель и маршрут","parameters":{}},
 {"name":"BF_Inventory","status":true,"description":"Bitz Fantasy — Inventory / Bag UI. Adds a separate inventory button beside the journal and gear menu.","parameters":{}},
 {"name":"BF_GearMenu","status":true,"description":"Bitz Fantasy - Полная замена стандартного меню на меню-шестерёнку.","parameters":{}},

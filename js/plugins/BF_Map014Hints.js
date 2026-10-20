@@ -10,7 +10,7 @@
  * Map029: events 10, 11
  * Map030: events 12, 13, 14, 15
  * Map031: events 3, 4, 5, 6, 7
- * Map009: event 1
+ * Map009: events 3, 4, 5, 6
  *
  * Visual-only: does not modify map data, event commands, triggers, switches,
  * variables, or puzzle logic. Replace the existing BF_Map014Hints.js with this
@@ -20,7 +20,7 @@
     'use strict';
 
     var TARGETS = {
-        9: [1],
+        9: [3, 4, 5, 6],
         14: [3, 4, 5, 6, 7],
         18: [8],
         19: [4],

@@ -1,6 +1,6 @@
 /*:
- * @plugindesc v4.0 Touch-first lockpicking. One-finger control, no Enter required.
- * @author OpenAI
+ * @plugindesc v5.0 Bitz Fantasy — ornate gold-and-burgundy lockpicking, RU/EN localization.
+ * @author ASTROLIT GAMES
  *
  * @param Default Difficulty
  * @type number
@@ -29,6 +29,9 @@
  * Plugin Command:
  *   LOCKPICK
  *   LOCKPICK 1..10
+ *
+ * Localization: uses ConfigManager.bfLanguage from ASTROLIT_Language.js (ru/en).
+ * Visual style: Bitz Fantasy burgundy, antique brass and warm gold.
  *
  * Touch controls:
  *   Put a finger on the pick handle and drag around the lock.
@@ -62,6 +65,12 @@
     var FAILURE_SWITCH = Number(P["Failure Switch"] || 0);
     var RESULT_VARIABLE = Number(P["Result Variable"] || 15);
     var PICK_DURABILITY = Math.max(1, Number(P["Pick Durability"] || 5));
+
+    // Bitz Fantasy uses ConfigManager.bfLanguage: "ru" or "en".
+    // Keep a Russian fallback so this plugin also works without the language plugin.
+    function tr(ru, en) {
+        return (window.ConfigManager && ConfigManager.bfLanguage === "en") ? en : ru;
+    }
 
     Input.keyMapper[65] = "lock_left";
     Input.keyMapper[68] = "lock_right";
@@ -155,24 +164,24 @@
         var s = new Sprite(new Bitmap(Graphics.boxWidth, Graphics.boxHeight));
         var b = s.bitmap, c = b._context, w = b.width, h = b.height;
 
-        c.fillStyle = "rgba(0,0,0,0.78)";
+        c.fillStyle = "rgba(12,5,5,0.84)";
         c.fillRect(0, 0, w, h);
 
         c.textAlign = "center";
-        c.font = "bold 46px sans-serif";
-        c.fillStyle = ok ? "#8cffca" : "#ff8095";
+        c.font = "bold 42px GameFont, sans-serif";
+        c.fillStyle = ok ? "#9bffca" : "#ff9a8f";
         c.shadowColor = c.fillStyle;
         c.shadowBlur = 25;
-        c.fillText(ok ? "ЗАМОК ОТКРЫТ" : "ОТМЫЧКА СЛОМАЛАСЬ", w / 2, h / 2 - 25);
+        c.fillText(ok ? tr("ЗАМОК ОТКРЫТ", "LOCK OPENED") : tr("ОТМЫЧКА СЛОМАЛАСЬ", "LOCKPICK BROKE"), w / 2, h / 2 - 25);
         c.shadowBlur = 0;
 
-        c.font = "18px sans-serif";
+        c.font = "20px GameFont, sans-serif";
         c.fillStyle = "#e7ebf5";
-        c.fillText(ok ? "Последний штифт защёлкнулся." : "Слишком сильное сопротивление.", w / 2, h / 2 + 18);
+        c.fillText(ok ? tr("Последний штифт защёлкнулся.", "The final pin clicked into place.") : tr("Слишком сильное сопротивление.", "The lock resisted too strongly."), w / 2, h / 2 + 18);
 
-        c.font = "14px sans-serif";
-        c.fillStyle = "#9da8c0";
-        c.fillText("Коснись экрана, чтобы продолжить", w / 2, h / 2 + 60);
+        c.font = "16px GameFont, sans-serif";
+        c.fillStyle = "#c8a77a";
+        c.fillText(tr("Коснись экрана, чтобы продолжить", "Touch the screen to continue"), w / 2, h / 2 + 60);
 
         b._setDirty();
         this.addChild(s);
@@ -180,21 +189,18 @@
 
     Scene_LockTouch.prototype.drawBackground = function() {
         var b = this._bg.bitmap, c = b._context, w = b.width, h = b.height;
-        c.fillStyle = "#05070c";
-        c.fillRect(0, 0, w, h);
-
-        var g = c.createRadialGradient(w/2,h/2,40,w/2,h/2,700);
-        g.addColorStop(0,"#202d47");
-        g.addColorStop(0.55,"#0e1729");
-        g.addColorStop(1,"#030409");
-        c.fillStyle = g;
-        c.fillRect(0,0,w,h);
-
-        for (var i=0;i<110;i++) {
-            var x=(i*83)%w, y=(i*47)%h;
-            c.fillStyle="rgba(180,210,255,"+(0.06+(i%4)*0.035)+")";
+        c.fillStyle = "#100908"; c.fillRect(0, 0, w, h);
+        var g = c.createRadialGradient(w/2,h/2,30,w/2,h/2,Math.max(w,h)*.78);
+        g.addColorStop(0,"#48231d"); g.addColorStop(.48,"#24110f"); g.addColorStop(1,"#090606");
+        c.fillStyle = g; c.fillRect(0,0,w,h);
+        // Subtle casino-like gold flecks and a fine frame, not a noisy starfield.
+        for (var i=0;i<70;i++) {
+            var x=(i*97+23)%w, y=(i*53+17)%h;
+            c.fillStyle="rgba(232,181,82,"+(0.045+(i%3)*0.025)+")";
             c.fillRect(x,y,1+(i%2),1+(i%2));
         }
+        c.strokeStyle="rgba(218,165,69,.20)"; c.lineWidth=2; c.strokeRect(18,18,w-36,h-36);
+        c.strokeStyle="rgba(255,222,143,.10)"; c.lineWidth=1; c.strokeRect(25,25,w-50,h-50);
         b._setDirty();
     };
 
@@ -227,7 +233,7 @@
         this.failed=false;
         this.health=PICK_DURABILITY+Math.floor((10-difficulty)/3);
         this.maxHealth=this.health;
-        this.message="Потяни отмычку пальцем";
+        this.message=tr("Потяни отмычку пальцем", "Drag the lockpick with your finger");
         this.messageTimer=0;
         this.shake=0;
         this.particles=[];
@@ -260,6 +266,7 @@
     TouchLockUI.prototype.updatePuzzle=function(){
         if(this.success||this.failed){ this.redraw(); return; }
         this.time+=1/60;
+        this.frameMovement=0;
 
         var hasTouch=TouchInput.isPressed();
         var dx=TouchInput.x-this.x;
@@ -279,6 +286,7 @@
             var da=a-this.lastAngle;
             while(da>Math.PI)da-=Math.PI*2;
             while(da<-Math.PI)da+=Math.PI*2;
+            this.frameMovement=Math.abs(da);
 
             // One-finger motion directly controls pick rotation.
             this.pickAngle+=da;
@@ -289,6 +297,7 @@
         }else{
             this.dragging=false;
             this.releaseFrames++;
+            this.frameMovement=0;
         }
 
         // Keyboard fallback.
@@ -302,7 +311,7 @@
         var d=this.dist(this.pickAngle,pin.angle);
 
         // Speed is the key: slow finger movement = higher control.
-        var movement=Math.abs(this.pickAngle-this.lastAngle);
+        var movement=this.frameMovement || 0;
         var slowBonus=Math.max(0,1-Math.min(1,movement/.055));
         var near=Math.max(0,1-d/(pin.tol*3.8));
 
@@ -314,17 +323,17 @@
             pin.progress += .012*this.pressure*(1.0+this.difficulty*.03);
 
             if(this.pressure>.72){
-                this.message="Тише... штифт поднимается";
+                this.message=tr("Медленнее… штифт поднимается", "Easy… the pin is lifting");
                 this.messageTimer=5;
             }else{
-                this.message="Есть сопротивление";
+                this.message=tr("Чувствуется сопротивление", "You feel resistance");
                 this.messageTimer=5;
             }
 
             if(pin.falsePin && this.pressure>.82){
                 this.health-=.022*(1+this.difficulty*.04);
                 this.shake=5;
-                this.message="Ложный штифт — отпусти чуть-чуть";
+                this.message=tr("Ложный штифт — немного ослабь нажим", "False pin — ease the pressure");
             }
 
             if(pin.progress>=1){
@@ -335,10 +344,10 @@
 
                 if(this.currentPin>=this.pinCount){
                     this.success=true;
-                    this.message="ЩЕЛЧОК! Замок открыт";
+                    this.message=tr("ЩЁЛК! Замок открыт", "CLICK! Lock opened");
                     this.burst();
                 }else{
-                    this.message="ЩЕЛЧОК! Ищи следующий";
+                    this.message=tr("ЩЁЛК! Ищи следующий штифт", "CLICK! Find the next pin");
                 }
                 this.messageTimer=70;
             }
@@ -409,29 +418,40 @@
         var sx=this.shake?(Math.random()-.5)*7:0;
         c.save();c.translate(sx,0);
 
-        c.fillStyle="rgba(8,12,21,.98)";
+        c.fillStyle="rgba(35,14,13,.985)";
         this.round(c,0,0,w,h,28);c.fill();
-        c.strokeStyle="#596883";c.lineWidth=2;this.round(c,0,0,w,h,28);c.stroke();
+        c.strokeStyle="#9a6330";c.lineWidth=2;this.round(c,0,0,w,h,28);c.stroke();
+        // Decorative Bitz Fantasy title rail and small brass corner studs.
+        var rail=c.createLinearGradient(0,8,w,8); rail.addColorStop(0,"#6e351f"); rail.addColorStop(.5,"#f0c66c"); rail.addColorStop(1,"#6e351f");
+        c.fillStyle=rail; c.fillRect(28,91,w-56,2);
+        c.fillStyle="#f3cf7d";
+        [[24,24],[w-24,24],[24,h-24],[w-24,h-24]].forEach(function(pt){c.beginPath();c.arc(pt[0],pt[1],3,0,Math.PI*2);c.fill();});
 
         c.textAlign="center";
-        c.font="bold 29px sans-serif";c.fillStyle="#f1f5ff";
-        c.fillText("ВЗЛОМ ЗАМКА",w/2,43);
-        c.font="15px sans-serif";c.fillStyle="#a1acc2";
-        c.fillText("Управление одним пальцем — двигай отмычку медленно",w/2,69);
+        c.font="bold 29px GameFont, sans-serif";c.fillStyle="#ffe7b0";
+        c.fillText(tr("ВЗЛОМ ЗАМКА", "LOCKPICKING"),w/2,43);
+        c.font="16px GameFont, sans-serif";c.fillStyle="#d1ad7b";
+        c.fillText(tr("Веди отмычку по дуге медленно. Почувствуй сопротивление.", "Move the pick slowly around the arc. Feel the resistance."),w/2,69);
 
         // Main lock.
         c.save();c.translate(w/2,255);
         c.shadowColor="rgba(0,0,0,.9)";c.shadowBlur=35;
         var mg=c.createLinearGradient(-195,-155,195,155);
-        mg.addColorStop(0,"#5b667e");mg.addColorStop(.5,"#1a2233");mg.addColorStop(1,"#3c4860");
+        mg.addColorStop(0,"#a96e37");mg.addColorStop(.5,"#3a1b16");mg.addColorStop(1,"#6c3924");
         c.fillStyle=mg;this.round(c,-195,-155,390,310,36);c.fill();
-        c.shadowBlur=0;c.strokeStyle="#7c8aa5";c.lineWidth=3;this.round(c,-195,-155,390,310,36);c.stroke();
+        c.shadowBlur=0;c.strokeStyle="#e3b65c";c.lineWidth=4;this.round(c,-195,-155,390,310,36);c.stroke();
+        c.strokeStyle="rgba(255,225,151,.55)";c.lineWidth=1;this.round(c,-186,-146,372,292,29);c.stroke();
+        // Small rivets around the lock plate.
+        [[-171,-130],[171,-130],[-171,130],[171,130]].forEach(function(pt){
+            c.fillStyle="#3a1a12";c.beginPath();c.arc(pt[0],pt[1],7,0,Math.PI*2);c.fill();
+            c.strokeStyle="#f0c66c";c.lineWidth=2;c.stroke();
+        });
 
         // Cylinder.
         c.save();
         c.rotate(this.cylinder*.38);
         c.fillStyle="#06090f";c.beginPath();c.arc(0,12,96,0,Math.PI*2);c.fill();
-        c.strokeStyle=this.resistance>.7?"#ffd36e":"#8794af";c.lineWidth=5;
+        c.strokeStyle=this.resistance>.7?"#ffd36e":"#d9a84e";c.lineWidth=5;
         c.beginPath();c.arc(0,12,103,0,Math.PI*2);c.stroke();
         c.fillStyle="#020407";this.round(c,-19,27,38,110,13);c.fill();
         c.restore();
@@ -442,11 +462,11 @@
             var px=-140+i*(280/Math.max(1,this.pins.length-1));
             var active=i===this.currentPin;
             var lift=p.set?25:(active?this.resistance*20:0);
-            c.fillStyle=p.set?"#7fffc4":(active&&this.resistance>.55?"#ffd475":"#c7cfdf");
+            c.fillStyle=p.set?"#7fffc4":(active&&this.resistance>.55?"#ffd475":"#d9c6a1");
             c.shadowColor=p.set?"#72ffc2":(active&&this.resistance>.55?"#ffd475":"#000");
             c.shadowBlur=(p.set||active&&this.resistance>.55)?15:4;
             this.round(c,px-9,-104-lift,18,66,6);c.fill();c.shadowBlur=0;
-            c.fillStyle="#59647a";this.round(c,px-14,-111,28,11,5);c.fill();
+            c.fillStyle="#70452a";this.round(c,px-14,-111,28,11,5);c.fill();
 
             if(active&&!p.set){
                 c.strokeStyle="#fff0a2";c.lineWidth=2;
@@ -457,16 +477,16 @@
         // Pick itself.
         c.save();c.rotate(this.pickAngle);
         c.lineCap="round";c.shadowColor="#ffd36c";c.shadowBlur=18;
-        c.strokeStyle="#d1a049";c.lineWidth=13;
+        c.strokeStyle="#e1ad4f";c.lineWidth=13;
         c.beginPath();c.moveTo(-350,20);c.lineTo(-65,20);c.stroke();
-        c.shadowBlur=0;c.strokeStyle="#fff0aa";c.lineWidth=3;
+        c.shadowBlur=0;c.strokeStyle="#fff0bd";c.lineWidth=3;
         c.beginPath();c.moveTo(-350,20);c.lineTo(-65,20);c.stroke();
-        c.strokeStyle="#f1bd5f";c.lineWidth=8;
+        c.strokeStyle="#f2c86b";c.lineWidth=8;
         c.beginPath();c.moveTo(-65,20);c.lineTo(96,20);c.lineTo(119,9);c.moveTo(96,20);c.lineTo(119,31);c.stroke();
 
         // Handle.
-        c.fillStyle="#a97935";this.round(c,-405,5,95,30,15);c.fill();
-        c.fillStyle="#ffe29a";c.font="bold 12px sans-serif";c.fillText("ОТМЫЧКА",-357,25);
+        c.fillStyle="#7d4325";this.round(c,-405,5,95,30,15);c.fill();
+        c.fillStyle="#ffdf91";c.font="bold 12px sans-serif";c.fillText(tr("ОТМЫЧКА", "LOCKPICK"),-357,25);
         c.restore();
 
         // Tension wrench visual reacts automatically.
@@ -479,30 +499,30 @@
 
         // Status.
         var status,color;
-        if(this.success){status="🔓 ЩЕЛЧОК! ЗАМОК ОТКРЫТ";color="#83ffc7";}
-        else if(this.failed){status="ОТМЫЧКА СЛОМАЛАСЬ";color="#ff8095";}
-        else if(this.resistance>.82){status="СИЛЬНОЕ СОПРОТИВЛЕНИЕ — МЕДЛЕННЕЕ";color="#ffd071";}
-        else if(this.resistance>.52){status="ЕСТЬ СОПРОТИВЛЕНИЕ — ПРОДОЛЖАЙ МЕДЛЕННО";color="#ffdc8d";}
-        else{status="ВЕДИ ПАЛЬЦЕМ ПО КРУГУ И ИЩИ ШТИФТ";color="#c3cce0";}
+        if(this.success){status=tr("ЩЁЛК! ЗАМОК ОТКРЫТ", "CLICK! LOCK OPENED");color="#83ffc7";}
+        else if(this.failed){status=tr("ОТМЫЧКА СЛОМАЛАСЬ", "LOCKPICK BROKE");color="#ff8095";}
+        else if(this.resistance>.82){status=tr("СИЛЬНОЕ СОПРОТИВЛЕНИЕ — МЕДЛЕННЕЕ", "HEAVY RESISTANCE — SLOW DOWN");color="#ffd16e";}
+        else if(this.resistance>.52){status=tr("ЕСТЬ СОПРОТИВЛЕНИЕ — ДЕЙСТВУЙ ПЛАВНО", "RESISTANCE — KEEP IT STEADY");color="#ffdc8d";}
+        else{status=tr("ВЕДИ ПО КРУГУ И ИЩИ НУЖНОЕ ПОЛОЖЕНИЕ", "FOLLOW THE ARC AND FEEL FOR THE PIN");color="#c3cce0";}
 
-        c.font="bold 18px sans-serif";c.fillStyle=color;c.fillText(status,w/2,425);
+        c.font="bold 17px GameFont, sans-serif";c.fillStyle=color;c.fillText(status,w/2,425);
 
         // Durability.
-        c.font="13px sans-serif";c.fillStyle="#9da8c0";c.fillText("Прочность отмычки",145,455);
+        c.font="13px sans-serif";c.fillStyle="#c8a77a";c.fillText(tr("Прочность отмычки", "Lockpick durability"),145,455);
         var bx=235,by=443,bw=370,bh=17;
-        c.fillStyle="#090c14";this.round(c,bx,by,bw,bh,8);c.fill();
+        c.fillStyle="#180b0a";this.round(c,bx,by,bw,bh,8);c.fill();
         var hp=this.health/this.maxHealth;
-        c.fillStyle=hp>.55?"#70e8ae":(hp>.25?"#ffd071":"#ff6d82");
+        c.fillStyle=hp>.55?"#7be0a8":(hp>.25?"#ffd16e":"#ff7880");
         this.round(c,bx,by,bw*hp,bh,8);c.fill();
 
-        c.font="13px sans-serif";c.fillStyle="#a9b4ca";
-        c.fillText("ШТИФТ "+Math.min(this.currentPin+1,this.pinCount)+" / "+this.pinCount,w/2,488);
-        c.fillText("👆 Двигай пальцем медленно. Чем ближе — тем сильнее замок сопротивляется.",w/2,515);
-        c.fillText("ПК: мышь | Клавиатура: ← → / A D | ESC — выход",w/2,536);
+        c.font="13px sans-serif";c.fillStyle="#d8bd91";
+        c.fillText(tr("ШТИФТ ", "PIN ")+Math.min(this.currentPin+1,this.pinCount)+" / "+this.pinCount,w/2,488);
+        c.fillText(tr("Двигай пальцем медленно. Чем ближе к штифту — тем сильнее сопротивление.", "Move slowly. The closer you are to a pin, the stronger the resistance."),w/2,515);
+        c.fillText(tr("Мышь или палец: движение | ← → / A D: клавиатура | ESC: выход", "Mouse or finger: move | ← → / A D: keyboard | ESC: quit"),w/2,536);
 
         // Touch ring / finger hint.
         if(!this.dragging&&!this.success&&!this.failed){
-            c.strokeStyle="rgba(255,220,140,.35)";c.lineWidth=2;
+            c.strokeStyle="rgba(255,211,111,.48)";c.lineWidth=2;
             c.setLineDash([7,8]);
             c.beginPath();c.arc(w/2,255,215,0,Math.PI*2);c.stroke();
             c.setLineDash([]);
@@ -510,7 +530,7 @@
 
         for(var j=0;j<this.particles.length;j++){
             var q=this.particles[j],alpha=Math.max(0,q.life/q.max);
-            c.globalAlpha=alpha;c.fillStyle="#ffe08b";c.shadowColor="#ffe08b";c.shadowBlur=10;
+            c.globalAlpha=alpha;c.fillStyle="#ffcf68";c.shadowColor="#ffcf68";c.shadowBlur=10;
             c.beginPath();c.arc(q.x+w/2,q.y+255,2.7,0,Math.PI*2);c.fill();
         }
         c.globalAlpha=1;c.shadowBlur=0;
