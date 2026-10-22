@@ -538,7 +538,7 @@ Scene_BFRatCatch.prototype.startPuzzle=function(){
   var sim=this.simulateMouse(1200);
   this._path=sim.path;this._pathIndex=0;this._stepT=0;this._pauseT=18;this._runResult=sim.status;
   this._mode='run';this._won=false;this._lost=false;this._runStarted=true;
-  this._mouse.visible=true;this._mouse.alpha=1;this._trapSp.bitmap=img('mousetrap_open');
+  this._mouse.visible=true;this._mouse.alpha=1;this._trapSp.bitmap=this._bfTrapBitmap('open');
   if(sim.status==='success')this.showMessage('Мышь побежала.');
   else if(sim.status==='hole')this.showMessage('Осторожно — впереди нора!');
   else if(sim.status==='dead')this.showMessage('Мышь упёрлась в тупик.');
@@ -557,7 +557,7 @@ Scene_BFRatCatch.prototype.resetPuzzle=function(){
   this._path=[];this._pathIndex=0;this._stepT=0;this._pauseT=0;this._runStarted=false;this._runResult='';this._won=false;this._lost=false;this._lossT=0;
   this._mode='build';
   this.resetMouseVisual();
-  this._trapSp.bitmap=img('mousetrap_open');
+  this._trapSp.bitmap=this._bfTrapBitmap('open');
   for(var i=0;i<this._barriers.length;i++){
     var b=this._barriers[i]._bf;b.x=b.homeX;b.y=b.homeY;b.held=false;
     this._barriers[i].visible=true;this._barriers[i].scale.set(1);this._barriers[i].z=0;this.placeBlock(this._barriers[i]);
@@ -629,7 +629,7 @@ Scene_BFRatCatch.prototype.resolveRun=function(){
 
 Scene_BFRatCatch.prototype.finishWin=function(){
   if(this._won)return;
-  this._won=true;this._mode='win';this._trapSp.bitmap=img('mousetrap_closed');this._pauseT=48;
+  this._won=true;this._mode='win';this._trapSp.bitmap=this._bfTrapBitmap('closed');this._pauseT=48;
   if(!this._resultSent){
     this._resultSent=true;
     if(window.BF_QuestSystem&&typeof window.BF_QuestSystem.minigameResult==='function')window.BF_QuestSystem.minigameResult('SUCCESS');
@@ -731,4 +731,205 @@ window.BF_RatCatch_Start=function(questId){
 
 window.Scene_BFRatCatch=Scene_BFRatCatch;
 
+})();
+
+
+/* ============================================================
+ * BF_RatCatch visual upgrade — integrated into BF_RatCatch.js
+ * No second plugin required. Original puzzle logic is preserved.
+ * ============================================================ */
+(function(){
+'use strict';
+var P=window.Scene_BFRatCatch&&window.Scene_BFRatCatch.prototype;
+if(!P)return;
+var W=1280,H=720,COLS=23,ROWS=13,CELL=Math.min(W/COLS,H/ROWS);
+var OX=(W-COLS*CELL)/2, OY=(H-ROWS*CELL)/2;
+var MAP=[
+'#######################',
+'#......#..##..........#',
+'#...####......#.#.###.#',
+'#....#.##.......#.###.#',
+'###...#...###.....#...#',
+'#......#...############',
+'#...##....#...###.##..#',
+'#.#.##.....###..##...##',
+'#...#.#..#...#......###',
+'#....#...##.....#..#..#',
+'##......#....#....###.#',
+'#.......#.#..#.#......#',
+'#######################'
+];
+function k(x,y){return x+','+y;}
+function walk(x,y){return y>=0&&y<ROWS&&x>=0&&x<COLS&&MAP[y].charAt(x)==='.';}
+function asset(n){return ImageManager.loadPicture('BF_RatCatch/'+n);}
+function ready(b){return b&&b.isReady&&b.isReady()&&b.width>0&&b.height>0;}
+function safeCall(fn,ctx,args){try{return fn.apply(ctx,args||[]);}catch(e){return null;}}
+var original={
+ drawMaze:P.drawMaze,makeHole:P.makeHole,makeBlock:P.makeBlock,makeMouse:P.makeMouse,
+ createTrap:P.createTrap,createFX:P.createFX,showMessage:P.showMessage,drawTransient:P.drawTransient
+};
+P._bfTrapBitmap=function(state){
+ var name=state==='closed'?'trap_closed':'trap_open';
+ var b=this._bfVisualAssets&&this._bfVisualAssets[name];
+ if(ready(b))return b;
+ return asset(state==='closed'?'mousetrap_closed':'mousetrap_open');
+};
+P.preload=function(){
+ this._bfVisualAssets={};
+ var names=['bg_dungeon','tile_floor','tile_wall','rat_sheet','trap_open','trap_closed','hole','barrier','dust','spark'];
+ for(var i=0;i<names.length;i++)this._bfVisualAssets[names[i]]=asset(names[i]);
+ this._assetsReady=false;
+ var self=this,remaining=names.length;
+ function done(){remaining--;if(remaining<=0){self._assetsReady=true;self._bfRefreshVisuals();}}
+ for(i=0;i<names.length;i++){
+   (function(b){if(ready(b))done();else if(b&&b.addLoadListener)b.addLoadListener(done);else done();})(this._bfVisualAssets[names[i]]);
+ }
+};
+P._bfRefreshVisuals=function(){
+ if(this._bfVisualRefreshed)return;
+ this._bfVisualRefreshed=true;
+ if(this._mazeSp&&this._mazeSp.bitmap)this._bfDrawAssetMaze();
+ if(this._trapSp){
+   var trapKey=(this._mode==='win'||this._won)?'trap_closed':'trap_open';
+   if(ready(this._bfVisualAssets[trapKey]))this._trapSp.bitmap=this._bfVisualAssets[trapKey];
+ }
+ if(this._holeSps)for(var i=0;i<this._holeSps.length;i++){
+   if(ready(this._bfVisualAssets.hole))this._holeSps[i].bitmap=this._bfVisualAssets.hole;
+ }
+ if(this._barriers)for(i=0;i<this._barriers.length;i++){
+   if(ready(this._bfVisualAssets.barrier))this._barriers[i].bitmap=this._bfVisualAssets.barrier;
+ }
+ if(this._mouse&&ready(this._bfVisualAssets.rat_sheet)){
+   this._mouse.bitmap=this._bfVisualAssets.rat_sheet;
+   this._mouse.setFrame(64,128,64,64);
+ }
+};
+P._bfDrawAssetMaze=function(){
+ var floor=this._bfVisualAssets&&this._bfVisualAssets.tile_floor;
+ var wall=this._bfVisualAssets&&this._bfVisualAssets.tile_wall;
+ var bg=this._bfVisualAssets&&this._bfVisualAssets.bg_dungeon;
+ if(!ready(floor)||!ready(wall))return;
+ var bmp=new Bitmap(W,H),ctx=bmp._context;
+ if(ready(bg))bmp.blt(bg,0,0,Math.min(bg.width,W),Math.min(bg.height,H),0,0,W,H);
+ else {ctx.fillStyle='#17120e';ctx.fillRect(0,0,W,H);}
+ for(var y=0;y<ROWS;y++)for(var x=0;x<COLS;x++){
+   var px=OX+x*CELL,py=OY+y*CELL;
+   var source=walk(x,y)?floor:wall;
+   bmp.blt(source,0,0,source.width,source.height,px,py,CELL+0.5,CELL+0.5);
+ }
+ /* Soft amber pools near the start and goal, with a gentle screen vignette. */
+ var s={x:OX+1*CELL+CELL/2,y:OY+1*CELL+CELL/2};
+ var t={x:OX+21*CELL+CELL/2,y:OY+11*CELL+CELL/2};
+ ctx.save();
+ [[s.x,s.y,CELL*2.8,'rgba(231,166,75,0.18)'],[t.x,t.y,CELL*3,'rgba(219,113,48,0.16)']].forEach(function(a){
+   var g=ctx.createRadialGradient(a[0],a[1],1,a[0],a[1],a[2]);
+   g.addColorStop(0,a[3]);g.addColorStop(1,'rgba(0,0,0,0)');
+   ctx.fillStyle=g;ctx.fillRect(a[0]-a[2],a[1]-a[2],a[2]*2,a[2]*2);
+ });
+ var vg=ctx.createRadialGradient(W/2,H/2,H*.18,W/2,H/2,H*.76);
+ vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(0,0,0,0.55)');
+ ctx.fillStyle=vg;ctx.fillRect(0,0,W,H);ctx.restore();
+ this._mazeSp.bitmap=bmp;
+};
+P.drawMaze=function(){
+ safeCall(original.drawMaze,this,arguments);
+ var self=this;
+ if(!this._bfVisualAssets)this._bfVisualAssets={};
+ this._bfVisualAssets.bg_dungeon=asset('bg_dungeon');
+ this._bfVisualAssets.tile_floor=asset('tile_floor');
+ this._bfVisualAssets.tile_wall=asset('tile_wall');
+ var list=[this._bfVisualAssets.bg_dungeon,this._bfVisualAssets.tile_floor,this._bfVisualAssets.tile_wall];
+ var n=0;
+ list.forEach(function(b){if(ready(b)){n++;if(n===list.length)self._bfDrawAssetMaze();}else b.addLoadListener(function(){n++;if(n===list.length)self._bfDrawAssetMaze();});});
+};
+P.makeHole=function(){
+ var b=asset('hole');
+ if(ready(b)){var s=new Sprite(b);s.anchor.set(.5,.5);return s;}
+ var sp=safeCall(original.makeHole,this,arguments);
+ if(sp&&b&&b.addLoadListener)b.addLoadListener(function(){if(ready(b))sp.bitmap=b;});
+ return sp;
+};
+P.makeBlock=function(){
+ var b=asset('barrier');
+ if(ready(b)){var s=new Sprite(b);s.anchor.set(.5,.5);this._objectLayer.addChild(s);return s;}
+ var sp=safeCall(original.makeBlock,this,arguments);
+ if(sp&&b&&b.addLoadListener)b.addLoadListener(function(){if(ready(b))sp.bitmap=b;});
+ return sp;
+};
+P.createTrap=function(){
+ safeCall(original.createTrap,this,arguments);
+ var b=asset('trap_open'),self=this;
+ if(this._trapSp)this._trapSp.scale.set(0.68,0.68);
+ function applyTrapAsset(){
+   if(!self._trapSp)return;
+   var closed=(self._mode==='win'||self._won);
+   var chosen=closed?asset('trap_closed'):b;
+   if(ready(chosen))self._trapSp.bitmap=chosen;
+ }
+ if(this._trapSp&&b.addLoadListener)b.addLoadListener(applyTrapAsset);
+ if(this._trapSp&&ready(b))applyTrapAsset();
+};
+P.makeMouse=function(){
+ var b=asset('rat_sheet');
+ if(ready(b)){var sp=new Sprite(b);sp.anchor.set(.5,.78);sp._bfFrame=1;sp._bfAnimTick=0;sp._bfDirRow=2;sp.setFrame(64,128,64,64);sp.scale.set(1.0);return sp;}
+ var sp=safeCall(original.makeMouse,this,arguments);
+ if(sp&&b.addLoadListener)b.addLoadListener(function(){if(ready(b)){sp.bitmap=b;sp.setFrame(64,128,64,64);}});
+ return sp;
+};
+P.createFX=function(){
+ safeCall(original.createFX,this,arguments);
+ /* The decorative frame/panel are intentionally not drawn: they were covering
+    the maze and scaling badly in the game window. */
+ this._bfFrameSp=null;
+ this._bfPanelSp=null;
+ this._bfParticles=[];
+ this._bfDustTick=0;
+};
+P.showMessage=function(text){
+ this._message=String(text||'');this._messageT=150;
+ if(!this._bfMessageSp){
+   var bmp=new Bitmap(700,52);this._bfMessageSp=new Sprite(bmp);
+   this._bfMessageSp.anchor.set(.5,0);this._bfMessageSp.x=W/2;this._bfMessageSp.y=14;
+   this._bfMessageSp.z=1000;
+   if(this._world)this._world.addChild(this._bfMessageSp);else this.addChild(this._bfMessageSp);
+ }
+ var b=this._bfMessageSp.bitmap;b.clear();
+ var c=b._context;
+ c.save();c.fillStyle='rgba(18,12,8,0.84)';c.strokeStyle='rgba(181,138,79,0.9)';c.lineWidth=1.5;
+ c.beginPath();if(c.roundRect)c.roundRect(1,1,698,50,7);else c.rect(1,1,698,50);c.fill();c.stroke();c.restore();
+ b.fontFace='GameFont';b.fontSize=21;b.textColor='#f1dfbd';b.outlineColor='rgba(0,0,0,0.95)';b.outlineWidth=3;
+ b.drawText(this._message,12,5,676,42,'center');this._bfMessageSp.alpha=1;
+};
+P.drawTransient=function(){
+ safeCall(original.drawTransient,this,arguments);
+ if(!this._fxSp||!this._fxSp.bitmap)return;
+ var b=this._fxSp.bitmap,ctx=b._context, self=this;
+ this._bfDustTick=(this._bfDustTick||0)+1;
+ if(this._mode==='run'&&this._mouse&&this._bfDustTick%6===0){
+   this._bfParticles=this._bfParticles||[];
+   this._bfParticles.push({x:this._mouse.x,y:this._mouse.y+7,vx:(Math.random()-.5)*.7,vy:-Math.random()*.7-0.1,life:24,max:24});
+ }
+ b._context.save();
+ for(var i=(this._bfParticles||[]).length-1;i>=0;i--){
+   var p=this._bfParticles[i];p.x+=p.vx;p.y+=p.vy;p.life--;
+   if(p.life<=0){this._bfParticles.splice(i,1);continue;}
+   ctx.globalAlpha=p.life/p.max*.34;ctx.fillStyle='#bba88d';ctx.beginPath();ctx.arc(p.x,p.y,2+(1-p.life/p.max)*4,0,Math.PI*2);ctx.fill();
+ }
+ ctx.globalAlpha=1;
+ /* amber radial light around the mouse */
+ if(this._mouse&&this._mouse.visible){
+   var g=ctx.createRadialGradient(this._mouse.x,this._mouse.y,2,this._mouse.x,this._mouse.y,CELL*2.6);
+   g.addColorStop(0,'rgba(255,190,94,0.10)');g.addColorStop(1,'rgba(255,190,94,0)');
+   ctx.fillStyle=g;ctx.fillRect(this._mouse.x-CELL*2.6,this._mouse.y-CELL*2.6,CELL*5.2,CELL*5.2);
+ }
+ b._context.restore();
+ if(this._bfMessageSp){
+   var t=this._messageT||0;this._bfMessageSp.alpha=t>18?1:Math.max(0,t/18);
+ }
+ if(this._assetsReady)this._bfRefreshVisuals();
+};
+var oldUpdate=P.update;
+P.update=function(){
+ return oldUpdate.apply(this,arguments);
+};
 })();
