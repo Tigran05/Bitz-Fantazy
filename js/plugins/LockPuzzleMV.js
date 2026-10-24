@@ -241,16 +241,28 @@
         this.pinCount=Math.min(7,3+Math.floor(difficulty*.45));
         this.pins=[];
         for(var i=0;i<this.pinCount;i++){
+            // Keep each pin's target aligned with its visible position on the lock.
             var a=-1.08+i*(2.16/Math.max(1,this.pinCount-1));
-            a+=((Math.random()-.5)*.22);
+            a+=((Math.random()-.5)*.12);
             this.pins.push({
                 angle:a,
                 tol:Math.max(.055,.115-difficulty*.005),
                 progress:0,
                 set:false,
-                falsePin:(difficulty>=8 && i===this.pinCount-2),
+                falsePin:false,
                 phase:Math.random()*Math.PI*2
             });
+        }
+        // The physical pins stay in their proper places, but the unlocking order
+        // is shuffled for every attempt, so the player must search around the arc.
+        this.pinOrder=[];
+        for(var oi=0;oi<this.pinCount;oi++) this.pinOrder.push(oi);
+        for(var si=this.pinOrder.length-1;si>0;si--){
+            var sj=Math.floor(Math.random()*(si+1));
+            var tmp=this.pinOrder[si];this.pinOrder[si]=this.pinOrder[sj];this.pinOrder[sj]=tmp;
+        }
+        if(difficulty>=8 && this.pinOrder.length>2){
+            this.pins[this.pinOrder[1]].falsePin=true;
         }
 
         this.redraw();
@@ -271,12 +283,17 @@
         var hasTouch=TouchInput.isPressed();
         var dx=TouchInput.x-this.x;
         var dy=TouchInput.y-this.y;
-        var r=Math.sqrt(dx*dx+dy*dy);
 
-        // Only grab the pick in a generous ring around the lock.
-        if(hasTouch && (this.dragging || (r>175 && r<390))){
+        // Controls are attached ONLY to the visible lockpick, never to the
+        // circular lock face. Convert the pointer into the pick's local space
+        // and allow grabbing its handle/shaft/tip with a forgiving hit area.
+        var ca=Math.cos(-this.pickAngle), sa=Math.sin(-this.pickAngle);
+        var localX=dx*ca-dy*sa;
+        var localY=dx*sa+dy*ca;
+        var pickHit=(localX>=-238 && localX<=137 && Math.abs(localY-20)<=25);
+
+        if(hasTouch && (this.dragging || pickHit)){
             var a=Math.atan2(dy,dx);
-
             if(!this.dragging){
                 this.lastAngle=a;
                 this.dragging=true;
@@ -287,12 +304,9 @@
             while(da>Math.PI)da-=Math.PI*2;
             while(da<-Math.PI)da+=Math.PI*2;
             this.frameMovement=Math.abs(da);
-
-            // One-finger motion directly controls pick rotation.
             this.pickAngle+=da;
             this.pickAngle=Math.max(-1.25,Math.min(1.25,this.pickAngle));
             this.lastAngle=a;
-
             this.dragFrames++;
         }else{
             this.dragging=false;
@@ -305,7 +319,8 @@
         if(Input.isPressed("right")||Input.isPressed("lock_right"))this.pickAngle+=.025;
         this.pickAngle=Math.max(-1.25,Math.min(1.25,this.pickAngle));
 
-        var pin=this.pins[this.currentPin];
+        var pinIndex=this.pinOrder[this.currentPin];
+        var pin=this.pins[pinIndex];
         if(!pin){this.success=true;this.redraw();return;}
 
         var d=this.dist(this.pickAngle,pin.angle);
@@ -430,8 +445,6 @@
         c.textAlign="center";
         c.font="bold 29px GameFont, sans-serif";c.fillStyle="#ffe7b0";
         c.fillText(tr("ВЗЛОМ ЗАМКА", "LOCKPICKING"),w/2,43);
-        c.font="16px GameFont, sans-serif";c.fillStyle="#d1ad7b";
-        c.fillText(tr("Веди отмычку по дуге медленно. Почувствуй сопротивление.", "Move the pick slowly around the arc. Feel the resistance."),w/2,69);
 
         // Main lock.
         c.save();c.translate(w/2,255);
@@ -460,7 +473,7 @@
         for(var i=0;i<this.pins.length;i++){
             var p=this.pins[i];
             var px=-140+i*(280/Math.max(1,this.pins.length-1));
-            var active=i===this.currentPin;
+            var active=i===this.pinOrder[this.currentPin];
             var lift=p.set?25:(active?this.resistance*20:0);
             c.fillStyle=p.set?"#7fffc4":(active&&this.resistance>.55?"#ffd475":"#d9c6a1");
             c.shadowColor=p.set?"#72ffc2":(active&&this.resistance>.55?"#ffd475":"#000");
@@ -474,19 +487,21 @@
             }
         }
 
-        // Pick itself.
+        // Compact lockpick: keep the working tip near the cylinder and avoid
+        // the oversized shaft crossing the whole screen.
         c.save();c.rotate(this.pickAngle);
-        c.lineCap="round";c.shadowColor="#ffd36c";c.shadowBlur=18;
-        c.strokeStyle="#e1ad4f";c.lineWidth=13;
-        c.beginPath();c.moveTo(-350,20);c.lineTo(-65,20);c.stroke();
-        c.shadowBlur=0;c.strokeStyle="#fff0bd";c.lineWidth=3;
-        c.beginPath();c.moveTo(-350,20);c.lineTo(-65,20);c.stroke();
-        c.strokeStyle="#f2c86b";c.lineWidth=8;
-        c.beginPath();c.moveTo(-65,20);c.lineTo(96,20);c.lineTo(119,9);c.moveTo(96,20);c.lineTo(119,31);c.stroke();
-
-        // Handle.
-        c.fillStyle="#7d4325";this.round(c,-405,5,95,30,15);c.fill();
-        c.fillStyle="#ffdf91";c.font="bold 12px sans-serif";c.fillText(tr("ОТМЫЧКА", "LOCKPICK"),-357,25);
+        c.lineCap="round";c.shadowColor="#ffd36c";c.shadowBlur=12;
+        c.strokeStyle="#8a4c25";c.lineWidth=12;
+        c.beginPath();c.moveTo(-175,20);c.lineTo(-65,20);c.stroke();
+        c.shadowBlur=0;c.strokeStyle="#e1ad4f";c.lineWidth=8;
+        c.beginPath();c.moveTo(-175,20);c.lineTo(-65,20);c.stroke();
+        c.strokeStyle="#fff0bd";c.lineWidth=2;
+        c.beginPath();c.moveTo(-170,17);c.lineTo(-65,17);c.stroke();
+        c.strokeStyle="#f2c86b";c.lineWidth=7;
+        c.beginPath();c.moveTo(-65,20);c.lineTo(96,20);c.lineTo(115,10);c.moveTo(96,20);c.lineTo(115,30);c.stroke();
+        // Small plain handle; no tiny text on it.
+        c.fillStyle="#7d4325";this.round(c,-215,7,48,26,12);c.fill();
+        c.strokeStyle="#dba34c";c.lineWidth=2;this.round(c,-215,7,48,26,12);c.stroke();
         c.restore();
 
         // Tension wrench visual reacts automatically.
@@ -505,20 +520,19 @@
         else if(this.resistance>.52){status=tr("ЕСТЬ СОПРОТИВЛЕНИЕ — ДЕЙСТВУЙ ПЛАВНО", "RESISTANCE — KEEP IT STEADY");color="#ffdc8d";}
         else{status=tr("ВЕДИ ПО КРУГУ И ИЩИ НУЖНОЕ ПОЛОЖЕНИЕ", "FOLLOW THE ARC AND FEEL FOR THE PIN");color="#c3cce0";}
 
-        c.font="bold 17px GameFont, sans-serif";c.fillStyle=color;c.fillText(status,w/2,425);
+        // Keep feedback compact and readable; omit instructional paragraphs.
+        c.font="bold 17px GameFont, sans-serif";c.fillStyle=color;
+        if(this.success||this.failed||this.resistance>.52) c.fillText(status,w/2,425);
 
-        // Durability.
-        c.font="13px sans-serif";c.fillStyle="#c8a77a";c.fillText(tr("Прочность отмычки", "Lockpick durability"),145,455);
+        // Durability bar without its small caption.
         var bx=235,by=443,bw=370,bh=17;
         c.fillStyle="#180b0a";this.round(c,bx,by,bw,bh,8);c.fill();
         var hp=this.health/this.maxHealth;
         c.fillStyle=hp>.55?"#7be0a8":(hp>.25?"#ffd16e":"#ff7880");
         this.round(c,bx,by,bw*hp,bh,8);c.fill();
 
-        c.font="13px sans-serif";c.fillStyle="#d8bd91";
-        c.fillText(tr("ШТИФТ ", "PIN ")+Math.min(this.currentPin+1,this.pinCount)+" / "+this.pinCount,w/2,488);
-        c.fillText(tr("Двигай пальцем медленно. Чем ближе к штифту — тем сильнее сопротивление.", "Move slowly. The closer you are to a pin, the stronger the resistance."),w/2,515);
-        c.fillText(tr("Мышь или палец: движение | ← → / A D: клавиатура | ESC: выход", "Mouse or finger: move | ← → / A D: keyboard | ESC: quit"),w/2,536);
+        c.font="bold 15px GameFont, sans-serif";c.fillStyle="#d8bd91";
+        c.fillText(Math.min(this.currentPin+1,this.pinCount)+" / "+this.pinCount,w/2,488);
 
         // Touch ring / finger hint.
         if(!this.dragging&&!this.success&&!this.failed){
