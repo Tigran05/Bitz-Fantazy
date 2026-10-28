@@ -106,6 +106,135 @@
     }
 
 
+
+    // =========================================================
+    // LANDSCAPE-ONLY GUARD
+    // =========================================================
+    // Браузеры/клиенты Telegram не всегда разрешают заблокировать
+    // ориентацию программно. Поэтому пробуем lock('landscape'), а
+    // если устройство осталось в портретном режиме — перекрываем
+    // игру экраном с просьбой повернуть телефон.
+    var landscapeOverlay = null;
+
+    function isPortraitViewport() {
+        return window.matchMedia
+            ? window.matchMedia('(orientation: portrait)').matches
+            : window.innerHeight > window.innerWidth;
+    }
+
+    function tryLockLandscape() {
+        try {
+            if (screen.orientation && screen.orientation.lock) {
+                var lockResult = screen.orientation.lock('landscape');
+                if (lockResult && typeof lockResult.catch === 'function') {
+                    lockResult.catch(function () {
+                        // Нормальный fallback: показываем экран поворота.
+                    });
+                }
+            }
+        } catch (e) {
+            // Не все браузеры разрешают блокировку ориентации.
+        }
+    }
+
+    function createLandscapeOverlay() {
+        if (landscapeOverlay || !document.body) return;
+
+        landscapeOverlay = document.createElement('div');
+        landscapeOverlay.id = 'BitzLandscapeOnlyOverlay';
+        landscapeOverlay.setAttribute('role', 'dialog');
+        landscapeOverlay.setAttribute('aria-live', 'polite');
+        landscapeOverlay.style.cssText =
+            'position:fixed;inset:0;z-index:2147483647;' +
+            'display:none;align-items:center;justify-content:center;' +
+            'box-sizing:border-box;padding:24px;text-align:center;' +
+            'background:#10141d;color:#ffffff;font-family:Arial,sans-serif;' +
+            'touch-action:manipulation;';
+
+        var panel = document.createElement('div');
+        panel.style.cssText = 'max-width:360px;width:100%;';
+
+        var icon = document.createElement('div');
+        icon.textContent = '↻';
+        icon.style.cssText = 'font-size:64px;line-height:1.2;margin-bottom:16px;';
+
+        var title = document.createElement('div');
+        title.textContent = 'Поверните телефон';
+        title.style.cssText = 'font-size:26px;font-weight:700;margin-bottom:12px;';
+
+        var message = document.createElement('div');
+        message.textContent = 'Bitz Fantasy работает только в альбомном режиме.';
+        message.style.cssText = 'font-size:16px;line-height:1.5;margin-bottom:22px;color:#d7deea;';
+
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = 'Перейти в альбомный режим';
+        button.style.cssText =
+            'border:0;border-radius:10px;padding:14px 18px;' +
+            'font-size:16px;font-weight:700;background:#e7bd61;color:#171717;' +
+            'cursor:pointer;max-width:100%;';
+
+        button.addEventListener('click', function () {
+            tryLockLandscape();
+            if (tg && typeof tg.requestFullscreen === 'function') {
+                try {
+                    var result = tg.requestFullscreen();
+                    if (result && typeof result.catch === 'function') result.catch(function () {});
+                } catch (e) {}
+            }
+            updateLandscapeGuard();
+        });
+
+        panel.appendChild(icon);
+        panel.appendChild(title);
+        panel.appendChild(message);
+        panel.appendChild(button);
+        landscapeOverlay.appendChild(panel);
+        document.body.appendChild(landscapeOverlay);
+    }
+
+    function updateLandscapeGuard() {
+        createLandscapeOverlay();
+        if (!landscapeOverlay) return;
+
+        var portrait = isPortraitViewport();
+        landscapeOverlay.style.display = portrait ? 'flex' : 'none';
+
+        if (portrait) {
+            // Попытка повторить блокировку; при отказе остаётся экран-подсказка.
+            tryLockLandscape();
+        } else {
+            scaleGameToScreen();
+        }
+    }
+
+    function initLandscapeGuard() {
+        createLandscapeOverlay();
+        tryLockLandscape();
+        updateLandscapeGuard();
+
+        window.addEventListener('resize', function () {
+            setTimeout(updateLandscapeGuard, 100);
+        }, false);
+
+        window.addEventListener('orientationchange', function () {
+            setTimeout(updateLandscapeGuard, 250);
+            setTimeout(updateLandscapeGuard, 700);
+        }, false);
+
+        if (screen.orientation && screen.orientation.addEventListener) {
+            screen.orientation.addEventListener('change', function () {
+                setTimeout(updateLandscapeGuard, 100);
+            });
+        }
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initLandscapeGuard);
+    } else {
+        initLandscapeGuard();
+    }
+
     // =========================================================
     // GAME SCALE
     // =========================================================
@@ -531,6 +660,8 @@
                     scaleGameToScreen,
                     300
                 );
+
+                setTimeout(updateLandscapeGuard, 350);
 
             }
         );
