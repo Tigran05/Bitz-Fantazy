@@ -20,7 +20,6 @@ var $plugins =
 {"name":"SafeCodeUI","status":true,"description":"[BitzFantasy] Красивый сенсорный кодовый замок сейфа. RPG Maker MV.","parameters":{}},
 {"name":"BF_KeySearchPuzzle","status":true,"description":"Bitz Fantasy — мини-игра поиска потерянных ключей у водосточной решётки","parameters":{}},
 {"name":"BF_UnderwaterTunnel","status":true,"description":"Bitz Fantasy — затопленный туннель: аркадная мини-игра в стиле Flappy Bird","parameters":{}},
-{"name":"BF_Minecart","status":true,"description":"Bitz Fantasy — Мини-игра «Вагонетки» для перехода через пещеры.","parameters":{}},
 {"name":"BF_PanelPuzzle1","status":true,"description":"Bitz Fantasy — Пульт 1: электрическая разводка","parameters":{}},
 {"name":"BF_PanelPuzzle2","status":true,"description":"Bitz Fantasy — Пульт 2: синхронизация шестерён","parameters":{}},
 {"name":"BF_PanelPuzzle3","status":true,"description":"Bitz Fantasy — Пульт 3: код запуска","parameters":{}},
@@ -31,5 +30,6 @@ var $plugins =
 {"name":"BF_CratePuzzle","status":true,"description":"Bitz Fantasy — Sokoban puzzle: pushable crates, target tiles, crystal reward, and reset switch.","parameters":{}},
 {"name":"BF_InteractionButton","status":true,"description":"Bitz Fantasy — contextual action button for touch devices (crates, levers, mirrors, lasers, crystals).","parameters":{"Show On Desktop":"true"}},
 {"name":"BF_Map014Hints","status":true,"description":"Bitz Fantasy — subtle hint markers for Map014 clue events","parameters":{}},
-{"name":"BF_EndingTitle","status":true,"description":"Bitz Fantasy — localized ending title screen on a black background.","parameters":{}}
+{"name":"BF_EndingTitle","status":true,"description":"Bitz Fantasy — localized ending title screen on a black background.","parameters":{}},
+{"name":"BF_Minecart","status":true,"description":"Bitz Fantasy — Вагонетка через пещеры: ускорение, торможение, прыжки и камнепад. ПК + браузер + мобильные.","parameters":{}}
 ];
