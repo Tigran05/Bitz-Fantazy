@@ -9,7 +9,6 @@
  *   ⚙ = единственная кнопка меню
  *
  * В меню:
- *   Сохранение
  *   Настройки
  *   Выйти
  *
@@ -174,7 +173,7 @@
         Window_Command.prototype.initialize.call(this, 0, 0);
 
         this.width = 360;
-        this.height = this.fittingHeight(4);
+        this.height = this.fittingHeight(2);
 
         this.x =
             Math.floor((Graphics.boxWidth - this.width) / 2);
@@ -188,10 +187,8 @@
     };
 
     Window_BFGearMenu.prototype.makeCommandList = function() {
-        this.addCommand("Сохранение", "save");
         this.addCommand("Настройки", "options");
         this.addCommand("Выйти", "exit");
-        this.addCommand("Закрыть", "close");
     };
 
 
@@ -220,11 +217,6 @@
             new Window_BFGearMenu();
 
         this._gearWindow.setHandler(
-            "save",
-            this.commandSave.bind(this)
-        );
-
-        this._gearWindow.setHandler(
             "options",
             this.commandOptions.bind(this)
         );
@@ -235,21 +227,11 @@
         );
 
         this._gearWindow.setHandler(
-            "close",
-            this.popScene.bind(this)
-        );
-
-        this._gearWindow.setHandler(
             "cancel",
             this.popScene.bind(this)
         );
 
         this.addWindow(this._gearWindow);
-    };
-
-    Scene_BFGearMenu.prototype.commandSave = function() {
-        SoundManager.playOk();
-        SceneManager.push(Scene_Save);
     };
 
     Scene_BFGearMenu.prototype.commandOptions = function() {

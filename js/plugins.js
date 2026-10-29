@@ -12,6 +12,7 @@ var $plugins =
 {"name":"BF_QuestMap","status":true,"description":"Bitz Fantasy — красивая карта-пергамент: местность, игрок, текущая цель и маршрут","parameters":{}},
 {"name":"BF_Inventory","status":true,"description":"Bitz Fantasy — Inventory / Bag UI. Adds a separate inventory button beside the journal and gear menu.","parameters":{}},
 {"name":"BF_GearMenu","status":true,"description":"Bitz Fantasy - Полная замена стандартного меню на меню-шестерёнку.","parameters":{}},
+{"name":"ASTROLIT_AutoSave","status":true,"description":"Bitz Fantasy — отдельное автосохранение, продолжение и подтверждение новой игры.","parameters":{}},
 {"name":"BF_RatCatch","status":true,"description":"Bitz Fantasy - Rat Catch v8. Fixed MV Bitmap error, clearer broom controls and reliable quest completion.","parameters":{}},
 {"name":"BF_Nitrogen","status":true,"description":"BitzFantasy — Nitrogen V6. Реальная мини-игра с ручным вентилем, инерцией, риском и таймингами.","parameters":{}},
 {"name":"BF_SwitchPuzzle","status":true,"description":"Bitz Fantasy — «Электрощит Вермилиона». Мини-игра с 5 тумблерами.","parameters":{}},
