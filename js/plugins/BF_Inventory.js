@@ -176,19 +176,17 @@
             this._bfBookIcon = null;
         }
 
-        // Четыре кнопки стоят строго одной линией с одинаковым шагом.
-        // Шестерёнку рисует BF_GearMenu; её центр остаётся на прежнем месте.
+        // На карте оставляем только журнал и карту.
+        // Кнопка-мешочек убрана из интерфейса, но данные инвентаря,
+        // сохранение предметов и команды BF_Inventory продолжают работать.
         var gearCenter = Graphics.boxWidth - 39;
         var step = 58;
-        this._bfTopBook = new Sprite_BFTopButton('BF_UI/book', gearCenter - step * 3);
-        this._bfTopBag  = new Sprite_BFTopButton('BF_UI/bag',  gearCenter - step * 2);
+        this._bfTopBook = new Sprite_BFTopButton('BF_UI/book', gearCenter - step * 2);
         this._bfTopMap  = new Sprite_BFTopButton('BF_UI/map',  gearCenter - step);
         this._bfTopBook.y = 40;
-        this._bfTopBag.y  = 40;
         this._bfTopMap.y  = 40;
 
         this.addChild(this._bfTopBook);
-        this.addChild(this._bfTopBag);
         this.addChild(this._bfTopMap);
     };
 

@@ -27,6 +27,11 @@
     var RIGHT = 12;
     var TOP = 12;
 
+    // Keep the touch target inside the visible game area on narrow screens.
+    function gearSize() {
+        return Math.min(SIZE, Math.max(42, Graphics.boxWidth - 24));
+    }
+
     // ============================================================
     // ШЕСТЕРЁНКА
     // ============================================================
@@ -40,21 +45,25 @@
 
     Sprite_BFGear.prototype.initialize = function() {
         Sprite.prototype.initialize.call(this, ImageManager.loadPicture('BF_UI/gear'));
-        this.x = Graphics.width - RIGHT;
+        this._gearSize = gearSize();
+        this.x = Graphics.boxWidth - RIGHT;
         this.y = TOP;
         this.anchor.x = 1;
         this.anchor.y = 0;
+        this.scale.x = this._gearSize / SIZE;
+        this.scale.y = this._gearSize / SIZE;
         this._pressed = false;
     };
 
     Sprite_BFGear.prototype.containsPoint = function(x, y) {
-        var left = Graphics.width - RIGHT - SIZE;
-        var right = Graphics.width - RIGHT;
+        var size = this._gearSize || SIZE;
+        var left = Graphics.boxWidth - RIGHT - size;
+        var right = Graphics.boxWidth - RIGHT;
 
         return x >= left &&
                x <= right &&
                y >= TOP &&
-               y <= TOP + SIZE;
+               y <= TOP + size;
     };
 
     Sprite_BFGear.prototype.update = function() {
@@ -172,7 +181,8 @@
     Window_BFGearMenu.prototype.initialize = function() {
         Window_Command.prototype.initialize.call(this, 0, 0);
 
-        this.width = 360;
+        // Avoid a fixed 360px menu overflowing on narrow mobile screens.
+        this.width = Math.min(360, Math.max(240, Graphics.boxWidth - 32));
         this.height = this.fittingHeight(2);
 
         this.x =

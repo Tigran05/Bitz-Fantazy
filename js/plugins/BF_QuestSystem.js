@@ -631,6 +631,82 @@
             self.contents.paintOpacity = 255;
         }
 
+        if (this._portrait) {
+            var PW = 720, PH = Graphics.boxHeight / scale;
+            var left = 48, wide = 624;
+            rule(left, 115, wide);
+            if (this._mode === 'active') {
+                heading('ТЕКУЩИЕ ДЕЛА', left, 130, wide);
+                var activeP = game.getActive();
+                var py = 185;
+                if (!activeP.length) {
+                    title('Пока нет текущих дел.', left+12, py, wide-24);
+                    py += 54;
+                    body('Когда Катя получит новое дело,', left+12, py, wide-24, 'center'); py += 38;
+                    body('оно появится здесь.', left+12, py, wide-24, 'center'); py += 55;
+                } else {
+                    activeP.forEach(function(id) {
+                        var cfgP = BF.configFor(id), qP = game.get(id);
+                        if (!cfgP || !qP || py > PH*0.55) return;
+                        title('• ' + (window.BF_Language && BF_Language.translateUI ? BF_Language.translateUI(cfgP.title) : cfgP.title), left+8, py, wide-16);
+                        py += 42;
+                        var stepP = ((cfgP.steps || [])[qP.step] || '');
+                        if (id === 'iron_cliff' && Number(qP.step) === 4) stepP = 'Пульты отключены: ' + game.panelCount() + '/3';
+                        py = wrapped(stepP, left+12, py, wide-24, 32) + 12;
+                        rule(left+8, py, wide-16); py += 18;
+                    });
+                }
+                var selectedP = game.selectedQuest();
+                var detailY = Math.max(py+12, PH*0.57);
+                rule(left, detailY, wide);
+                heading('ЗАПИСЬ РАССЛЕДОВАНИЯ', left, detailY+14, wide);
+                if (!selectedP) {
+                    title('Запись появится после получения дела.', left+12, detailY+66, wide-24);
+                } else {
+                    var scP = BF.configFor(selectedP), sqP = game.get(selectedP);
+                    if (scP && sqP) {
+                        title(window.BF_Language && BF_Language.translateUI ? BF_Language.translateUI(scP.title) : scP.title, left+12, detailY+66, wide-24);
+                        var descY = wrapped(scP.description || '', left+12, detailY+108, wide-24, 32) + 10;
+                        title('Текущий шаг', left+12, descY, wide-24);
+                        var stepTextP = ((scP.steps || [])[sqP.step] || '');
+                        if (selectedP === 'iron_cliff' && Number(sqP.step) === 4) stepTextP = 'Пульты отключены: ' + game.panelCount() + '/3';
+                        wrapped(stepTextP, left+12, descY+42, wide-24, 32);
+                    }
+                }
+            } else if (this._mode === 'notes') {
+                heading('ЛИЧНЫЕ ЗАМЕТКИ', left, 130, wide);
+                var notesP = game._notes || {}, noteKeysP = Object.keys(notesP), noteY = 190;
+                if (game.syncDigitsFromVariables) game.syncDigitsFromVariables();
+                if (!noteKeysP.length) { title('Записей пока нет.', left+12, noteY, wide-24); }
+                else noteKeysP.forEach(function(k) {
+                    if (noteY > PH-80) return;
+                    noteY = wrapped(notesP[k], left+12, noteY, wide-24, 34) + 16;
+                    rule(left+8, noteY, wide-16); noteY += 16;
+                });
+                var digitsP = game.getDigits ? game.getDigits() : {};
+                if (Object.keys(digitsP).length) {
+                    noteY = Math.max(noteY+12, PH*0.65);
+                    heading('НАЙДЕННЫЕ ЦИФРЫ', left, noteY, wide); noteY += 48;
+                    var orderP = ['bartender','engineer','manager'];
+                    var namesP = {bartender:'Бармен', engineer:'Инженер', manager:'Шулер'};
+                    orderP.forEach(function(k) { if (digitsP[k] != null && noteY < PH-40) { title(namesP[k] + ': ' + digitsP[k], left+12, noteY, wide-24); noteY += 42; } });
+                }
+            } else {
+                heading('ЗАВЕРШЁННЫЕ ДЕЛА', left, 130, wide);
+                var doneP = game.getCompleted(), doneY = 190;
+                if (!doneP.length) title('Пока ничего не завершено.', left+12, doneY, wide-24);
+                else doneP.forEach(function(id) {
+                    var cfgD = BF.configFor(id);
+                    if (!cfgD || doneY > PH-60) return;
+                    title('✓ ' + (window.BF_Language && BF_Language.translateUI ? BF_Language.translateUI(cfgD.title) : cfgD.title), left+12, doneY, wide-24);
+                    doneY += 46;
+                });
+                body('Завершённые дела остаются в архиве Кати.', left+12, Math.min(doneY+20, PH-70), wide-24, 'center');
+            }
+            this.contents._setDirty && this.contents._setDirty();
+            return;
+        }
+
         var L = 92, LW = 500;
         var R = 670, RW = 430; // Stop before the built-in right tabs.
 
@@ -747,18 +823,40 @@
         this._dim.bitmap.fillAll('rgba(0,0,0,0.14)');
         this.addChild(this._dim);
 
-        var BW = 1280, BH = 720;
-        var scale = Math.min(Graphics.boxWidth / BW, Graphics.boxHeight / BH);
-        this._bookX = Math.round((Graphics.boxWidth - BW * scale) / 2);
-        this._bookY = Math.round((Graphics.boxHeight - BH * scale) / 2);
-        this._bookScale = scale;
-
-        this._book = new Sprite(ImageManager.loadPicture('BFJournal/JournalBook'));
-        this._book.anchor.set(0, 0);
-        this._book.x = this._bookX;
-        this._book.y = this._bookY;
-        this._book.scale.set(scale, scale);
-        this.addChild(this._book);
+        this._portrait = Graphics.boxHeight > Graphics.boxWidth;
+        if (this._portrait) {
+            // Portrait layout is drawn as a tall journal page instead of shrinking
+            // the 1280x720 spread into a small strip in the middle of the phone.
+            var ps = Graphics.boxWidth / 720;
+            this._bookX = 0;
+            this._bookY = 0;
+            this._bookScale = ps;
+            var portraitBg = new Bitmap(Graphics.boxWidth, Graphics.boxHeight);
+            portraitBg.fillAll('#160b07');
+            portraitBg.fillRect(6*ps, 6*ps, Graphics.boxWidth-12*ps, Graphics.boxHeight-12*ps, '#5c2d13');
+            portraitBg.fillRect(13*ps, 13*ps, Graphics.boxWidth-26*ps, Graphics.boxHeight-26*ps, '#b17a3d');
+            portraitBg.fillRect(20*ps, 20*ps, Graphics.boxWidth-40*ps, Graphics.boxHeight-40*ps, '#392014');
+            portraitBg.fillRect(20*ps, 104*ps, Graphics.boxWidth-40*ps, Graphics.boxHeight-124*ps, '#d8b982');
+            portraitBg.fillRect(27*ps, 111*ps, Graphics.boxWidth-54*ps, Graphics.boxHeight-138*ps, '#f5e4bd');
+            portraitBg.fillRect(33*ps, 117*ps, Graphics.boxWidth-66*ps, Graphics.boxHeight-150*ps, '#f0ddb2');
+            this._portraitBg = new Sprite(portraitBg);
+            this.addChild(this._portraitBg);
+            this._book = new Sprite(ImageManager.loadPicture('BFJournal/JournalBook'));
+            this._book.visible = false;
+            this.addChild(this._book);
+        } else {
+            var BW = 1280, BH = 720;
+            var scale = Math.min(Graphics.boxWidth / BW, Graphics.boxHeight / BH);
+            this._bookX = Math.round((Graphics.boxWidth - BW * scale) / 2);
+            this._bookY = Math.round((Graphics.boxHeight - BH * scale) / 2);
+            this._bookScale = scale;
+            this._book = new Sprite(ImageManager.loadPicture('BFJournal/JournalBook'));
+            this._book.anchor.set(0, 0);
+            this._book.x = this._bookX;
+            this._book.y = this._bookY;
+            this._book.scale.set(scale, scale);
+            this.addChild(this._book);
+        }
 
         // Text is a full-screen transparent layer; its coordinates are mapped to the book.
         this._text = new Window_BFJournalText(0, 0, Graphics.boxWidth, Graphics.boxHeight, 'active');
@@ -781,7 +879,11 @@
         b.outlineColor = '#2b1208';
         b.outlineWidth = Math.max(2, Math.round(4 * s));
 
-        var tabs = [
+        var tabs = this._portrait ? [
+            {x:22, y:30, w:190, h:62, label:'ДЕЛА'},
+            {x:218, y:30, w:220, h:62, label:'ЗАМЕТКИ'},
+            {x:444, y:30, w:170, h:62, label:'АРХИВ'}
+        ] : [
             {x:1160, y:108, w:108, h:88, label:'ДЕЛА'},
             {x:1160, y:207, w:108, h:88, label:'ЗАМЕТКИ'},
             {x:1160, y:307, w:108, h:88, label:'АРХИВ'}
@@ -796,10 +898,17 @@
                 w:Math.round(t.w*s), h:Math.round(t.h*s)
             });
         }
-        this._closeHit = {
+        this._closeHit = this._portrait ? {
+            x:Math.round(ox+624*s), y:Math.round(oy+25*s),
+            w:Math.round(70*s), h:Math.round(70*s)
+        } : {
             x:Math.round(ox+1182*s), y:Math.round(oy+8*s),
             w:Math.round(82*s), h:Math.round(82*s)
         };
+        if (this._portrait) {
+            b.fontSize = Math.max(24, Math.round(38*s));
+            b.drawText('×', Math.round(ox+624*s), Math.round(oy+26*s), Math.round(70*s), Math.round(62*s), 'center');
+        }
     };
 
     Scene_BFJournal.prototype.update = function() {
@@ -825,14 +934,16 @@
 
         if (this._mode === 'active') {
             var active = BF.game().getActive();
-            var ly = this._bookY + 135*this._bookScale;
+            var ly = this._portrait ? 185*this._bookScale : this._bookY + 135*this._bookScale;
             for (var j=0;j<active.length;j++) {
                 var cfg=BF.configFor(active[j]), q=BF.game().get(active[j]);
                 if(!cfg||!q) continue;
                 var step=String((cfg.steps||[])[q.step]||'');
                 var lines=Math.max(1, Math.ceil(step.length/42));
                 var hh=Math.max(64, lines*30+46)*this._bookScale;
-                if(y>=ly&&y<ly+hh&&x>=this._bookX+70*this._bookScale&&x<=this._bookX+625*this._bookScale){
+                var hitLeft = this._portrait ? 48*this._bookScale : this._bookX+70*this._bookScale;
+                var hitRight = this._portrait ? 672*this._bookScale : this._bookX+625*this._bookScale;
+                if(y>=ly&&y<ly+hh&&x>=hitLeft&&x<=hitRight){
                     BF.game().selectQuest(active[j]);
                     this._text.refresh();
                     return;
